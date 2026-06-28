@@ -1,11 +1,19 @@
 import { useAppStore } from '@/stores/app-store';
+import { ColumnMappingPanel } from './ColumnMappingPanel';
+import { KeyColumnSelector } from './KeyColumnSelector';
 import type { MatchStrategy, JoinType } from '@/types';
 
 export function ComparisonConfigPanel() {
-  const { comparisonConfig, setComparisonConfig, parsedFileA } = useAppStore();
+  const { comparisonConfig, setComparisonConfig } = useAppStore();
 
   return (
     <div className="space-y-6">
+      {/* Column Mapping Section */}
+      <ColumnMappingPanel />
+
+      {/* Divider */}
+      <div className="border-t border-[var(--color-border)]" />
+
       {/* Match Strategy */}
       <div className="space-y-1.5">
         <label className="text-sm font-medium text-[var(--color-foreground)]">Row Matching Strategy</label>
@@ -25,27 +33,25 @@ export function ComparisonConfigPanel() {
         </p>
       </div>
 
-      {/* Key Columns (shown when strategy is 'key') */}
+      {/* Key Column Selector (shown when strategy is 'key') */}
       {comparisonConfig.matchStrategy === 'key' && (
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-[var(--color-foreground)]">Key Column Indices</label>
-          <input
-            type="text"
-            value={comparisonConfig.keyColumns.join(', ')}
-            onChange={(e) => {
-              const cols = e.target.value
-                .split(',')
-                .map(s => parseInt(s.trim()))
-                .filter(n => !isNaN(n));
-              setComparisonConfig({ keyColumns: cols });
-            }}
-            placeholder="0, 1 (comma-separated column indices)"
-            className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-          />
-          <p className="text-xs text-[var(--color-muted-foreground)]">
-            Enter zero-based column indices to use as matching keys.
-          </p>
-        </div>
+        <>
+          <KeyColumnSelector />
+
+          {/* Join Type */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-[var(--color-foreground)]">Join Type</label>
+            <select
+              value={comparisonConfig.joinType}
+              onChange={(e) => setComparisonConfig({ joinType: e.target.value as JoinType })}
+              className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            >
+              <option value="full-outer">Full Outer (show all rows)</option>
+              <option value="inner">Inner (only matched rows)</option>
+              <option value="left">Left (keep all from File A)</option>
+            </select>
+          </div>
+        </>
       )}
 
       {/* Fuzzy Threshold */}
@@ -66,22 +72,6 @@ export function ComparisonConfigPanel() {
           <p className="text-xs text-[var(--color-muted-foreground)]">
             Rows with similarity above this threshold will be matched.
           </p>
-        </div>
-      )}
-
-      {/* Join Type */}
-      {comparisonConfig.matchStrategy === 'key' && (
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-[var(--color-foreground)]">Join Type</label>
-          <select
-            value={comparisonConfig.joinType}
-            onChange={(e) => setComparisonConfig({ joinType: e.target.value as JoinType })}
-            className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-          >
-            <option value="full-outer">Full Outer (show all rows)</option>
-            <option value="inner">Inner (only matched rows)</option>
-            <option value="left">Left (keep all from File A)</option>
-          </select>
         </div>
       )}
 

@@ -10,6 +10,7 @@ import type {
   CellStatus,
   RowStatus,
   CompareProgress,
+  ColumnMapping,
 } from '@/types';
 
 /**
@@ -25,25 +26,30 @@ export async function compareFiles(
 
   onProgress?.({ phase: 'matching', progress: 0, message: 'Matching rows...' });
 
+  // Resolve effective column mappings
+  const mappings = config.columnMappings.length > 0
+    ? config.columnMappings
+    : autoMapColumns(fileA.headers, fileB.headers);
+
   let diffRows: DiffRow[];
 
   switch (config.matchStrategy) {
     case 'key':
-      diffRows = compareByKey(fileA, fileB, config, onProgress);
+      diffRows = compareByKey(fileA, fileB, config, mappings, onProgress);
       break;
     case 'fuzzy':
-      diffRows = compareByFuzzy(fileA, fileB, config, onProgress);
+      diffRows = compareByFuzzy(fileA, fileB, config, mappings, onProgress);
       break;
     case 'position':
     default:
-      diffRows = compareByPosition(fileA, fileB, config, onProgress);
+      diffRows = compareByPosition(fileA, fileB, config, mappings, onProgress);
       break;
   }
 
   onProgress?.({ phase: 'stats', progress: 85, message: 'Computing statistics...' });
 
   // Compute column statistics
-  const columnStats = computeColumnStats(diffRows, fileA.headers, fileB.headers);
+  const columnStats = computeColumnStats(diffRows, fileA.headers, fileB.headers, mappings);
 
   // Compute summary
   const summary: DiffSummary = {
@@ -54,7 +60,7 @@ export async function compareFiles(
     modifiedRows: diffRows.filter(r => r.status === 'modified').length,
     unchangedRows: diffRows.filter(r => r.status === 'unchanged').length,
     movedRows: diffRows.filter(r => r.status === 'moved').length,
-    totalColumns: Math.max(fileA.headers.length, fileB.headers.length),
+    totalColumns: mappings.length,
     comparisonTimeMs: performance.now() - startTime,
   };
 
@@ -66,7 +72,62 @@ export async function compareFiles(
     columnStats,
     headersA: fileA.headers,
     headersB: fileB.headers,
+    columnMappings: mappings,
   };
+}
+
+/**
+ * Auto-map columns between files A and B by matching header names (case-insensitive).
+ */
+function autoMapColumns(headersA: string[], headersB: string[]): ColumnMapping[] {
+  const mappings: ColumnMapping[] = [];
+  const usedB = new Set<number>();
+
+  for (let i = 0; i < headersA.length; i++) {
+    const normalizedA = headersA[i].toLowerCase().trim();
+    let matchedB = -1;
+
+    for (let j = 0; j < headersB.length; j++) {
+      if (usedB.has(j)) continue;
+      const normalizedB = headersB[j].toLowerCase().trim();
+      if (normalizedA === normalizedB) {
+        matchedB = j;
+        break;
+      }
+    }
+
+    if (matchedB >= 0) {
+      usedB.add(matchedB);
+      mappings.push({
+        columnIndexA: i,
+        columnIndexB: matchedB,
+        headerA: headersA[i],
+        headerB: headersB[matchedB],
+      });
+    } else {
+      // Column only in A — map to -1
+      mappings.push({
+        columnIndexA: i,
+        columnIndexB: -1,
+        headerA: headersA[i],
+        headerB: '',
+      });
+    }
+  }
+
+  // Add columns only in B
+  for (let j = 0; j < headersB.length; j++) {
+    if (!usedB.has(j)) {
+      mappings.push({
+        columnIndexA: -1,
+        columnIndexB: j,
+        headerA: '',
+        headerB: headersB[j],
+      });
+    }
+  }
+
+  return mappings;
 }
 
 /**
@@ -76,6 +137,7 @@ function compareByPosition(
   fileA: ParsedFile,
   fileB: ParsedFile,
   config: ComparisonConfig,
+  mappings: ColumnMapping[],
   onProgress?: (progress: CompareProgress) => void
 ): DiffRow[] {
   const maxRows = Math.max(fileA.rows.length, fileB.rows.length);
@@ -86,7 +148,7 @@ function compareByPosition(
     const rowB = i < fileB.rows.length ? fileB.rows[i] : null;
 
     if (rowA && rowB) {
-      const cells = compareCells(rowA, rowB, config);
+      const cells = compareCellsMapped(rowA, rowB, mappings, config);
       const hasChanges = cells.some(c => c.status !== 'same');
       
       diffRows.push({
@@ -102,10 +164,10 @@ function compareByPosition(
         status: 'removed',
         lineNumberA: i + 1,
         lineNumberB: null,
-        cells: rowA.map((val, colIdx) => ({
-          columnIndex: colIdx,
+        cells: mappings.map((m, idx) => ({
+          columnIndex: idx,
           status: 'removed' as CellStatus,
-          valueA: val,
+          valueA: m.columnIndexA >= 0 ? (rowA[m.columnIndexA] ?? null) : null,
           valueB: null,
         })),
       });
@@ -115,16 +177,15 @@ function compareByPosition(
         status: 'added',
         lineNumberA: null,
         lineNumberB: i + 1,
-        cells: rowB.map((val, colIdx) => ({
-          columnIndex: colIdx,
+        cells: mappings.map((m, idx) => ({
+          columnIndex: idx,
           status: 'added' as CellStatus,
           valueA: null,
-          valueB: val,
+          valueB: m.columnIndexB >= 0 ? (rowB[m.columnIndexB] ?? null) : null,
         })),
       });
     }
 
-    // Progress reporting
     if (i % 5000 === 0 && onProgress) {
       onProgress({
         phase: 'diffing',
@@ -144,18 +205,19 @@ function compareByKey(
   fileA: ParsedFile,
   fileB: ParsedFile,
   config: ComparisonConfig,
+  mappings: ColumnMapping[],
   onProgress?: (progress: CompareProgress) => void
 ): DiffRow[] {
-  const keyColumns = config.keyColumns;
+  const keyColumnsA = config.keyColumns;
+  const keyColumnsB = config.keyColumnsB.length > 0 ? config.keyColumnsB : config.keyColumns;
   
-  if (keyColumns.length === 0) {
-    // Fall back to position-based
-    return compareByPosition(fileA, fileB, config, onProgress);
+  if (keyColumnsA.length === 0) {
+    return compareByPosition(fileA, fileB, config, mappings, onProgress);
   }
 
-  // Build key maps
-  const mapA = buildKeyMap(fileA.rows, keyColumns);
-  const mapB = buildKeyMap(fileB.rows, keyColumns);
+  // Build key maps using respective key columns
+  const mapA = buildKeyMap(fileA.rows, keyColumnsA);
+  const mapB = buildKeyMap(fileB.rows, keyColumnsB);
 
   const diffRows: DiffRow[] = [];
   const processedKeysB = new Set<string>();
@@ -167,14 +229,11 @@ function compareByKey(
     const indicesB = mapB.get(key);
     
     if (indicesB) {
-      // Key exists in both files - compare
       processedKeysB.add(key);
-      
-      // Take the first occurrence for comparison
       const rowA = fileA.rows[indicesA[0]];
       const rowB = fileB.rows[indicesB[0]];
       
-      const cells = compareCells(rowA, rowB, config);
+      const cells = compareCellsMapped(rowA, rowB, mappings, config);
       const hasChanges = cells.some(c => c.status !== 'same');
 
       diffRows.push({
@@ -186,13 +245,13 @@ function compareByKey(
         cells,
       });
 
-      // Handle duplicate keys (multiple rows with same key)
+      // Handle duplicate keys
       for (let i = 1; i < Math.max(indicesA.length, indicesB.length); i++) {
         const extraRowA = i < indicesA.length ? fileA.rows[indicesA[i]] : null;
         const extraRowB = i < indicesB.length ? fileB.rows[indicesB[i]] : null;
 
         if (extraRowA && extraRowB) {
-          const extraCells = compareCells(extraRowA, extraRowB, config);
+          const extraCells = compareCellsMapped(extraRowA, extraRowB, mappings, config);
           const extraHasChanges = extraCells.some(c => c.status !== 'same');
           diffRows.push({
             id: `key_${key}_dup_${i}`,
@@ -209,10 +268,10 @@ function compareByKey(
             lineNumberA: indicesA[i] + 1,
             lineNumberB: null,
             keyValue: key,
-            cells: extraRowA.map((val, colIdx) => ({
-              columnIndex: colIdx,
+            cells: mappings.map((m, idx) => ({
+              columnIndex: idx,
               status: 'removed' as CellStatus,
-              valueA: val,
+              valueA: m.columnIndexA >= 0 ? (extraRowA[m.columnIndexA] ?? null) : null,
               valueB: null,
             })),
           });
@@ -223,17 +282,16 @@ function compareByKey(
             lineNumberA: null,
             lineNumberB: indicesB[i] + 1,
             keyValue: key,
-            cells: extraRowB.map((val, colIdx) => ({
-              columnIndex: colIdx,
+            cells: mappings.map((m, idx) => ({
+              columnIndex: idx,
               status: 'added' as CellStatus,
               valueA: null,
-              valueB: val,
+              valueB: m.columnIndexB >= 0 ? (extraRowB[m.columnIndexB] ?? null) : null,
             })),
           });
         }
       }
     } else {
-      // Key only in A - removed row
       const rowA = fileA.rows[indicesA[0]];
       diffRows.push({
         id: `removed_${key}`,
@@ -241,10 +299,10 @@ function compareByKey(
         lineNumberA: indicesA[0] + 1,
         lineNumberB: null,
         keyValue: key,
-        cells: rowA.map((val, colIdx) => ({
-          columnIndex: colIdx,
+        cells: mappings.map((m, idx) => ({
+          columnIndex: idx,
           status: 'removed' as CellStatus,
-          valueA: val,
+          valueA: m.columnIndexA >= 0 ? (rowA[m.columnIndexA] ?? null) : null,
           valueB: null,
         })),
       });
@@ -263,10 +321,8 @@ function compareByKey(
   // Process keys only in B (added rows)
   for (const [key, indicesB] of mapB.entries()) {
     if (processedKeysB.has(key)) continue;
-    
-    // Handle based on join type
-    if (config.joinType === 'left') continue; // Left join: skip B-only rows
-    if (config.joinType === 'inner') continue; // Inner join: skip B-only rows
+    if (config.joinType === 'left') continue;
+    if (config.joinType === 'inner') continue;
 
     const rowB = fileB.rows[indicesB[0]];
     diffRows.push({
@@ -275,16 +331,15 @@ function compareByKey(
       lineNumberA: null,
       lineNumberB: indicesB[0] + 1,
       keyValue: key,
-      cells: rowB.map((val, colIdx) => ({
-        columnIndex: colIdx,
+      cells: mappings.map((m, idx) => ({
+        columnIndex: idx,
         status: 'added' as CellStatus,
         valueA: null,
-        valueB: val,
+        valueB: m.columnIndexB >= 0 ? (rowB[m.columnIndexB] ?? null) : null,
       })),
     });
   }
 
-  // Sort by line number for consistent display
   diffRows.sort((a, b) => {
     const lineA = a.lineNumberA || a.lineNumberB || 0;
     const lineB = b.lineNumberA || b.lineNumberB || 0;
@@ -301,6 +356,7 @@ function compareByFuzzy(
   fileA: ParsedFile,
   fileB: ParsedFile,
   config: ComparisonConfig,
+  mappings: ColumnMapping[],
   onProgress?: (progress: CompareProgress) => void
 ): DiffRow[] {
   const threshold = config.fuzzyThreshold;
@@ -314,8 +370,7 @@ function compareByFuzzy(
 
     for (let j = 0; j < fileB.rows.length; j++) {
       if (matchedB.has(j)) continue;
-
-      const score = calculateRowSimilarity(rowA, fileB.rows[j], config);
+      const score = calculateRowSimilarityMapped(rowA, fileB.rows[j], mappings, config);
       if (score > bestScore) {
         bestScore = score;
         bestMatch = j;
@@ -325,7 +380,7 @@ function compareByFuzzy(
     if (bestScore >= threshold && bestMatch >= 0) {
       matchedB.add(bestMatch);
       const rowB = fileB.rows[bestMatch];
-      const cells = compareCells(rowA, rowB, config);
+      const cells = compareCellsMapped(rowA, rowB, mappings, config);
       const hasChanges = cells.some(c => c.status !== 'same');
 
       diffRows.push({
@@ -337,16 +392,15 @@ function compareByFuzzy(
         similarityScore: bestScore,
       });
     } else {
-      // No match found - removed
       diffRows.push({
         id: `removed_${i}`,
         status: 'removed',
         lineNumberA: i + 1,
         lineNumberB: null,
-        cells: rowA.map((val, colIdx) => ({
-          columnIndex: colIdx,
+        cells: mappings.map((m, idx) => ({
+          columnIndex: idx,
           status: 'removed' as CellStatus,
-          valueA: val,
+          valueA: m.columnIndexA >= 0 ? (rowA[m.columnIndexA] ?? null) : null,
           valueB: null,
         })),
       });
@@ -361,21 +415,19 @@ function compareByFuzzy(
     }
   }
 
-  // Add unmatched B rows
   for (let j = 0; j < fileB.rows.length; j++) {
     if (matchedB.has(j)) continue;
-    
     const rowB = fileB.rows[j];
     diffRows.push({
       id: `added_${j}`,
       status: 'added',
       lineNumberA: null,
       lineNumberB: j + 1,
-      cells: rowB.map((val, colIdx) => ({
-        columnIndex: colIdx,
+      cells: mappings.map((m, idx) => ({
+        columnIndex: idx,
         status: 'added' as CellStatus,
         valueA: null,
-        valueB: val,
+        valueB: m.columnIndexB >= 0 ? (rowB[m.columnIndexB] ?? null) : null,
       })),
     });
   }
@@ -384,7 +436,60 @@ function compareByFuzzy(
 }
 
 /**
- * Compare individual cells between two rows.
+ * Compare cells using column mappings - the core cell comparison with mapped columns.
+ */
+function compareCellsMapped(
+  rowA: string[],
+  rowB: string[],
+  mappings: ColumnMapping[],
+  config: ComparisonConfig
+): DiffCell[] {
+  const cells: DiffCell[] = [];
+
+  for (let idx = 0; idx < mappings.length; idx++) {
+    const mapping = mappings[idx];
+
+    // Skip ignored columns
+    if (config.ignoreColumns.includes(idx)) {
+      cells.push({
+        columnIndex: idx,
+        status: 'same',
+        valueA: mapping.columnIndexA >= 0 ? (rowA[mapping.columnIndexA] ?? null) : null,
+        valueB: mapping.columnIndexB >= 0 ? (rowB[mapping.columnIndexB] ?? null) : null,
+      });
+      continue;
+    }
+
+    const valA = mapping.columnIndexA >= 0 ? (rowA[mapping.columnIndexA] ?? null) : null;
+    const valB = mapping.columnIndexB >= 0 ? (rowB[mapping.columnIndexB] ?? null) : null;
+
+    if (valA === null && valB !== null) {
+      cells.push({ columnIndex: idx, status: 'added', valueA: null, valueB: valB });
+    } else if (valA !== null && valB === null) {
+      cells.push({ columnIndex: idx, status: 'removed', valueA: valA, valueB: null });
+    } else if (valA !== null && valB !== null) {
+      const areEqual = cellsAreEqual(valA, valB, config);
+      if (areEqual) {
+        cells.push({ columnIndex: idx, status: 'same', valueA: valA, valueB: valB });
+      } else {
+        cells.push({
+          columnIndex: idx,
+          status: 'changed',
+          valueA: valA,
+          valueB: valB,
+          charDiffs: computeCharDiff(valA, valB),
+        });
+      }
+    } else {
+      cells.push({ columnIndex: idx, status: 'same', valueA: null, valueB: null });
+    }
+  }
+
+  return cells;
+}
+
+/**
+ * Compare individual cells between two rows (legacy, used for old comparisons without mapping).
  */
 function compareCells(
   rowA: string[],
@@ -608,6 +713,29 @@ function mergeDiffs(diffs: CharDiff[]): CharDiff[] {
 }
 
 /**
+ * Calculate similarity score between two rows using column mappings (0-1).
+ */
+function calculateRowSimilarityMapped(
+  rowA: string[],
+  rowB: string[],
+  mappings: ColumnMapping[],
+  config: ComparisonConfig
+): number {
+  if (mappings.length === 0) return 0;
+  let matchingCells = 0;
+
+  for (let idx = 0; idx < mappings.length; idx++) {
+    if (config.ignoreColumns.includes(idx)) { matchingCells++; continue; }
+    const m = mappings[idx];
+    const valA = m.columnIndexA >= 0 ? (rowA[m.columnIndexA] ?? '') : '';
+    const valB = m.columnIndexB >= 0 ? (rowB[m.columnIndexB] ?? '') : '';
+    if (cellsAreEqual(valA, valB, config)) { matchingCells++; }
+    else { matchingCells += levenshteinSimilarity(valA, valB); }
+  }
+  return matchingCells / mappings.length;
+}
+
+/**
  * Calculate similarity score between two rows (0-1).
  */
 function calculateRowSimilarity(rowA: string[], rowB: string[], config: ComparisonConfig): number {
@@ -725,38 +853,33 @@ function buildKeyMap(rows: string[][], keyColumns: number[]): Map<string, number
 function computeColumnStats(
   diffRows: DiffRow[],
   headersA: string[],
-  headersB: string[]
+  headersB: string[],
+  mappings: ColumnMapping[]
 ): ColumnStat[] {
-  const maxCols = Math.max(headersA.length, headersB.length);
   const stats: ColumnStat[] = [];
 
-  for (let col = 0; col < maxCols; col++) {
+  for (let idx = 0; idx < mappings.length; idx++) {
+    const m = mappings[idx];
     let totalCells = 0;
     let changedCells = 0;
     let addedCells = 0;
     let removedCells = 0;
 
     for (const row of diffRows) {
-      const cell = row.cells[col];
+      const cell = row.cells[idx];
       if (!cell) continue;
-      
       totalCells++;
       switch (cell.status) {
-        case 'changed':
-          changedCells++;
-          break;
-        case 'added':
-          addedCells++;
-          break;
-        case 'removed':
-          removedCells++;
-          break;
+        case 'changed': changedCells++; break;
+        case 'added': addedCells++; break;
+        case 'removed': removedCells++; break;
       }
     }
 
+    const colName = m.headerA || m.headerB || `Column ${idx + 1}`;
     stats.push({
-      columnIndex: col,
-      columnName: col < headersA.length ? headersA[col] : (col < headersB.length ? headersB[col] : `Column ${col + 1}`),
+      columnIndex: idx,
+      columnName: colName,
       totalCells,
       changedCells,
       addedCells,

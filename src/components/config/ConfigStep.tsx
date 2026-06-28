@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/app-store';
 import { Button } from '@/components/ui/Button';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { DelimitedConfigPanel } from './DelimitedConfigPanel';
 import { FixedWidthConfigPanel } from './FixedWidthConfigPanel';
 import { ComparisonConfigPanel } from './ComparisonConfigPanel';
-import { ArrowLeft, ArrowRight, Play, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Loader2, FileSearch } from 'lucide-react';
 import { parseDelimitedFile } from '@/core/delimited-parser';
 import { parseFixedWidthFile } from '@/core/fixed-width-parser';
 import { compareFiles } from '@/core/diff-engine';
@@ -37,15 +37,21 @@ export function ConfigStep() {
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<'format' | 'comparison'>('format');
+  const [isParsing, setIsParsing] = useState(false);
 
-  const handleCompare = async () => {
+  // Auto-parse files when entering this step if not yet parsed
+  useEffect(() => {
+    if (!parsedFileA && !parsedFileB && fileA && fileB && !isParsing) {
+      handleParseFiles();
+    }
+  }, []);
+
+  const handleParseFiles = async () => {
     if (!fileA || !fileB) return;
-
-    setIsLoading(true);
+    setIsParsing(true);
     setError(null);
 
     try {
-      // Parse File A
       let parsedA = parsedFileA;
       if (!parsedA) {
         if (fileFormat === 'delimited') {
@@ -56,7 +62,42 @@ export function ConfigStep() {
         setParsedFileA(parsedA);
       }
 
-      // Parse File B
+      let parsedB = parsedFileB;
+      if (!parsedB) {
+        if (fileFormat === 'delimited') {
+          parsedB = await parseDelimitedFile(fileB, delimitedConfig, setParseProgressB);
+        } else {
+          parsedB = await parseFixedWidthFile(fileB, fixedWidthConfig, setParseProgressB);
+        }
+        setParsedFileB(parsedB);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to parse files');
+    } finally {
+      setIsParsing(false);
+      setParseProgressA(null);
+      setParseProgressB(null);
+    }
+  };
+
+  const handleCompare = async () => {
+    if (!fileA || !fileB) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Ensure files are parsed
+      let parsedA = parsedFileA;
+      if (!parsedA) {
+        if (fileFormat === 'delimited') {
+          parsedA = await parseDelimitedFile(fileA, delimitedConfig, setParseProgressA);
+        } else {
+          parsedA = await parseFixedWidthFile(fileA, fixedWidthConfig, setParseProgressA);
+        }
+        setParsedFileA(parsedA);
+      }
+
       let parsedB = parsedFileB;
       if (!parsedB) {
         if (fileFormat === 'delimited') {
@@ -81,6 +122,8 @@ export function ConfigStep() {
     }
   };
 
+  const filesParsed = parsedFileA !== null && parsedFileB !== null;
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Tabs */}
@@ -103,20 +146,35 @@ export function ConfigStep() {
               : 'border-transparent text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]'
           }`}
         >
-          Comparison Options
+          Column Mapping & Comparison
+          {filesParsed && (
+            <span className="ml-1.5 inline-block w-2 h-2 rounded-full bg-green-500" title="Files parsed" />
+          )}
         </button>
       </div>
 
       {/* Tab Content */}
       <div className="min-h-[300px]">
         {activeTab === 'format' && (
-          fileFormat === 'delimited' ? <DelimitedConfigPanel /> : <FixedWidthConfigPanel />
+          <>
+            {fileFormat === 'delimited' ? <DelimitedConfigPanel /> : <FixedWidthConfigPanel />}
+            {/* Re-parse button if format settings change */}
+            {filesParsed && (
+              <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-between">
+                <p className="text-xs text-blue-700">Files already parsed. Change format settings and re-parse if needed.</p>
+                <Button size="sm" variant="secondary" onClick={() => { setParsedFileA(null); setParsedFileB(null); handleParseFiles(); }}>
+                  <FileSearch className="w-3.5 h-3.5" />
+                  Re-Parse
+                </Button>
+              </div>
+            )}
+          </>
         )}
         {activeTab === 'comparison' && <ComparisonConfigPanel />}
       </div>
 
       {/* Progress */}
-      {isLoading && (
+      {(isParsing || isLoading) && (
         <div className="space-y-3 p-4 rounded-xl bg-[var(--color-muted)]">
           {parseProgressA && (
             <ProgressBar progress={parseProgressA.progress} message={`File A: ${parseProgressA.message}`} />
@@ -144,23 +202,44 @@ export function ConfigStep() {
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
-        <Button
-          size="lg"
-          onClick={handleCompare}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4" />
-              Run Comparison
-            </>
+        <div className="flex items-center gap-3">
+          {!filesParsed && (
+            <Button
+              variant="secondary"
+              onClick={handleParseFiles}
+              disabled={isParsing || !fileA || !fileB}
+            >
+              {isParsing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Parsing...
+                </>
+              ) : (
+                <>
+                  <FileSearch className="w-4 h-4" />
+                  Parse Files
+                </>
+              )}
+            </Button>
           )}
-        </Button>
+          <Button
+            size="lg"
+            onClick={handleCompare}
+            disabled={isLoading || isParsing}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Comparing...
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                Run Comparison
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -104,9 +104,19 @@ export type MatchStrategy = 'key' | 'position' | 'fuzzy';
 
 export type JoinType = 'full-outer' | 'inner' | 'left';
 
+// ===== Column Mapping =====
+
+export interface ColumnMapping {
+  columnIndexA: number;
+  columnIndexB: number;
+  headerA: string;
+  headerB: string;
+}
+
 export interface ComparisonConfig {
   matchStrategy: MatchStrategy;
-  keyColumns: number[]; // Column indices used as keys
+  keyColumns: number[]; // Column indices in File A used as keys
+  keyColumnsB: number[]; // Corresponding key column indices in File B (when headers differ)
   joinType: JoinType;
   caseSensitive: boolean;
   trimBeforeCompare: boolean;
@@ -116,11 +126,13 @@ export interface ComparisonConfig {
   fuzzyThreshold: number; // 0.0 - 1.0, minimum similarity score
   ignoreWhitespace: boolean;
   treatEmptyAsNull: boolean;
+  columnMappings: ColumnMapping[]; // User-defined column mappings between files
 }
 
 export const DEFAULT_COMPARISON_CONFIG: ComparisonConfig = {
   matchStrategy: 'position',
   keyColumns: [],
+  keyColumnsB: [],
   joinType: 'full-outer',
   caseSensitive: true,
   trimBeforeCompare: false,
@@ -130,6 +142,7 @@ export const DEFAULT_COMPARISON_CONFIG: ComparisonConfig = {
   fuzzyThreshold: 0.8,
   ignoreWhitespace: false,
   treatEmptyAsNull: false,
+  columnMappings: [],
 };
 
 // ===== Diff Results =====
@@ -191,7 +204,12 @@ export interface DiffResult {
   columnStats: ColumnStat[];
   headersA: string[];
   headersB: string[];
+  columnMappings: ColumnMapping[]; // The mappings used during comparison
 }
+
+// ===== Results Tab =====
+
+export type ResultsTab = 'summary' | 'differences' | 'only-original' | 'only-modified' | 'matched';
 
 // ===== Comparison Profile =====
 

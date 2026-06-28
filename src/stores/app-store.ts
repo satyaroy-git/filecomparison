@@ -4,6 +4,7 @@ import type {
   DelimitedConfig,
   FixedWidthConfig,
   ComparisonConfig,
+  ColumnMapping,
   ParsedFile,
   DiffResult,
   ParseProgress,
@@ -11,10 +12,7 @@ import type {
   UIState,
   DiffFilter,
   ViewMode,
-  DEFAULT_DELIMITED_CONFIG,
-  DEFAULT_FIXED_WIDTH_CONFIG,
-  DEFAULT_COMPARISON_CONFIG,
-  DEFAULT_UI_STATE,
+  ResultsTab,
 } from '@/types';
 
 export type AppStep = 'upload' | 'configure' | 'compare' | 'results';
@@ -70,6 +68,14 @@ export interface AppState {
   toggleShowUnchanged: () => void;
   toggleCharDiffs: () => void;
 
+  // Results tab
+  activeResultsTab: ResultsTab;
+  setActiveResultsTab: (tab: ResultsTab) => void;
+
+  // Column mapping
+  columnMappings: ColumnMapping[];
+  setColumnMappings: (mappings: ColumnMapping[]) => void;
+
   // Loading & error states
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
@@ -101,6 +107,7 @@ const initialFixedWidthConfig: FixedWidthConfig = {
 const initialComparisonConfig: ComparisonConfig = {
   matchStrategy: 'position',
   keyColumns: [],
+  keyColumnsB: [],
   joinType: 'full-outer',
   caseSensitive: true,
   trimBeforeCompare: false,
@@ -110,6 +117,7 @@ const initialComparisonConfig: ComparisonConfig = {
   fuzzyThreshold: 0.8,
   ignoreWhitespace: false,
   treatEmptyAsNull: false,
+  columnMappings: [],
 };
 
 const initialUIState: UIState = {
@@ -180,6 +188,14 @@ export const useAppStore = create<AppState>((set) => ({
   toggleCharDiffs: () =>
     set((state) => ({ uiState: { ...state.uiState, highlightCharDiffs: !state.uiState.highlightCharDiffs } })),
 
+  // Results tab
+  activeResultsTab: 'summary' as ResultsTab,
+  setActiveResultsTab: (tab) => set({ activeResultsTab: tab }),
+
+  // Column mapping
+  columnMappings: [],
+  setColumnMappings: (mappings) => set({ columnMappings: mappings }),
+
   // Loading & errors
   isLoading: false,
   setIsLoading: (loading) => set({ isLoading: loading }),
@@ -204,5 +220,7 @@ export const useAppStore = create<AppState>((set) => ({
       fixedWidthConfig: initialFixedWidthConfig,
       comparisonConfig: initialComparisonConfig,
       uiState: initialUIState,
+      activeResultsTab: 'summary' as ResultsTab,
+      columnMappings: [],
     }),
 }));

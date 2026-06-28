@@ -2,16 +2,24 @@ import { useAppStore } from '@/stores/app-store';
 import { Button } from '@/components/ui/Button';
 import { SummaryPanel } from './SummaryPanel';
 import { DiffTable } from './DiffTable';
-import { ArrowLeft, RotateCcw, Download } from 'lucide-react';
-import type { ViewMode, DiffFilter } from '@/types';
+import { ExcelExport } from './ExcelExport';
+import { ArrowLeft, RotateCcw } from 'lucide-react';
+import type { ResultsTab } from '@/types';
+import { cn } from '@/utils/cn';
+
+const TABS: { id: ResultsTab; label: string; description: string }[] = [
+  { id: 'summary', label: 'Summary', description: 'Overview and column statistics' },
+  { id: 'differences', label: 'Differences', description: 'Rows with changes' },
+  { id: 'only-original', label: 'Only in Original', description: 'Rows removed (not in modified file)' },
+  { id: 'only-modified', label: 'Only in Modified', description: 'Rows added (not in original file)' },
+  { id: 'matched', label: 'Matched', description: 'Rows present in both files (unchanged)' },
+];
 
 export function ResultsStep() {
   const {
     diffResult,
-    uiState,
-    setViewMode,
-    setDiffFilter,
-    toggleShowUnchanged,
+    activeResultsTab,
+    setActiveResultsTab,
     setStep,
     reset,
   } = useAppStore();
@@ -27,125 +35,75 @@ export function ResultsStep() {
     );
   }
 
-  const handleExportCSV = () => {
-    const headers = ['Status', 'Line A', 'Line B', ...diffResult.headersA.map((h, i) => `${h} (A)`), ...diffResult.headersB.map((h, i) => `${h} (B)`)];
-    const rows = diffResult.rows.map(row => {
-      const valuesA = row.cells.map(c => c.valueA || '');
-      const valuesB = row.cells.map(c => c.valueB || '');
-      return [row.status, row.lineNumberA || '', row.lineNumberB || '', ...valuesA, ...valuesB].join(',');
-    });
-    const csv = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'diff-result.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+  const getTabCount = (tabId: ResultsTab): number => {
+    switch (tabId) {
+      case 'summary': return diffResult.rows.length;
+      case 'differences': return diffResult.summary.modifiedRows;
+      case 'only-original': return diffResult.summary.removedRows;
+      case 'only-modified': return diffResult.summary.addedRows;
+      case 'matched': return diffResult.summary.unchangedRows;
+      default: return 0;
+    }
   };
-
-  const viewModes: { value: ViewMode; label: string }[] = [
-    { value: 'side-by-side', label: 'Side by Side' },
-    { value: 'table', label: 'Table' },
-    { value: 'summary', label: 'Summary' },
-  ];
-
-  const filters: { value: DiffFilter; label: string; count: number }[] = [
-    { value: 'all', label: 'All', count: diffResult.rows.length },
-    { value: 'modified', label: 'Modified', count: diffResult.summary.modifiedRows },
-    { value: 'added', label: 'Added', count: diffResult.summary.addedRows },
-    { value: 'removed', label: 'Removed', count: diffResult.summary.removedRows },
-    { value: 'unchanged', label: 'Unchanged', count: diffResult.summary.unchangedRows },
-  ];
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
+      {/* Top Summary Cards */}
       <SummaryPanel summary={diffResult.summary} columnStats={diffResult.columnStats} />
 
-      {/* Toolbar */}
-      <div className="flex items-center justify-between flex-wrap gap-3 py-3 px-4 bg-[var(--color-muted)] rounded-xl">
-        {/* View Mode */}
-        <div className="flex items-center gap-1 bg-white rounded-lg p-1 border border-[var(--color-border)]">
-          {viewModes.map(mode => (
+      {/* Tab Navigation */}
+      <div className="flex items-center justify-between border-b border-[var(--color-border)]">
+        <div className="flex overflow-x-auto">
+          {TABS.map(tab => (
             <button
-              key={mode.value}
-              onClick={() => setViewMode(mode.value)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                uiState.viewMode === mode.value
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]'
-              }`}
+              key={tab.id}
+              onClick={() => setActiveResultsTab(tab.id)}
+              className={cn(
+                'relative px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2',
+                activeResultsTab === tab.id
+                  ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+                  : 'border-transparent text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] hover:border-slate-300'
+              )}
             >
-              {mode.label}
+              {tab.label}
+              <span
+                className={cn(
+                  'ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full',
+                  activeResultsTab === tab.id
+                    ? 'bg-[var(--color-primary)] text-white'
+                    : 'bg-slate-200 text-slate-600'
+                )}
+              >
+                {getTabCount(tab.id).toLocaleString()}
+              </span>
             </button>
           ))}
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-1">
-          {filters.map(filter => (
-            <button
-              key={filter.value}
-              onClick={() => setDiffFilter(filter.value)}
-              className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
-                uiState.diffFilter === filter.value
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'bg-white text-[var(--color-muted-foreground)] hover:bg-slate-100 border border-[var(--color-border)]'
-              }`}
-            >
-              {filter.label} ({filter.count})
-            </button>
-          ))}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={handleExportCSV}>
-            <Download className="w-3.5 h-3.5" />
-            Export CSV
-          </Button>
+        {/* Export Button */}
+        <div className="flex-shrink-0 pl-4">
+          <ExcelExport />
         </div>
       </div>
 
-      {/* Results Content */}
-      {uiState.viewMode === 'summary' ? (
-        <div className="p-6 border border-[var(--color-border)] rounded-xl">
-          <h3 className="text-lg font-semibold mb-4">Column Statistics</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)]">
-                  <th className="text-left py-2 px-3 font-medium">Column</th>
-                  <th className="text-right py-2 px-3 font-medium">Total</th>
-                  <th className="text-right py-2 px-3 font-medium">Changed</th>
-                  <th className="text-right py-2 px-3 font-medium">Added</th>
-                  <th className="text-right py-2 px-3 font-medium">Removed</th>
-                  <th className="text-right py-2 px-3 font-medium">% Changed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {diffResult.columnStats.map(stat => (
-                  <tr key={stat.columnIndex} className="border-b border-[var(--color-border)] last:border-0">
-                    <td className="py-2 px-3 font-medium">{stat.columnName}</td>
-                    <td className="text-right py-2 px-3">{stat.totalCells}</td>
-                    <td className="text-right py-2 px-3 text-amber-600">{stat.changedCells}</td>
-                    <td className="text-right py-2 px-3 text-green-600">{stat.addedCells}</td>
-                    <td className="text-right py-2 px-3 text-red-600">{stat.removedCells}</td>
-                    <td className="text-right py-2 px-3">
-                      <span className={stat.changePercentage > 0 ? 'text-amber-600 font-medium' : ''}>
-                        {stat.changePercentage.toFixed(1)}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <DiffTable />
-      )}
+      {/* Tab Content */}
+      <div className="min-h-[400px]">
+        {activeResultsTab === 'summary' && (
+          <SummaryTabContent />
+        )}
+        {activeResultsTab === 'differences' && (
+          <DiffTable filterStatus="modified" />
+        )}
+        {activeResultsTab === 'only-original' && (
+          <DiffTable filterStatus="removed" />
+        )}
+        {activeResultsTab === 'only-modified' && (
+          <DiffTable filterStatus="added" />
+        )}
+        {activeResultsTab === 'matched' && (
+          <DiffTable filterStatus="unchanged" />
+        )}
+      </div>
 
       {/* Footer Actions */}
       <div className="flex items-center justify-between pt-4 border-t border-[var(--color-border)]">
@@ -158,6 +116,79 @@ export function ResultsStep() {
           New Comparison
         </Button>
       </div>
+    </div>
+  );
+}
+
+function SummaryTabContent() {
+  const { diffResult } = useAppStore();
+  if (!diffResult) return null;
+
+  return (
+    <div className="space-y-6">
+      {/* File Info */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="p-4 rounded-xl border border-[var(--color-border)] bg-white">
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)] uppercase tracking-wide mb-2">Original File (A)</h4>
+          <p className="text-2xl font-bold">{diffResult.summary.totalRowsA.toLocaleString()}</p>
+          <p className="text-sm text-[var(--color-muted-foreground)]">rows &middot; {diffResult.headersA.length} columns</p>
+        </div>
+        <div className="p-4 rounded-xl border border-[var(--color-border)] bg-white">
+          <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)] uppercase tracking-wide mb-2">Modified File (B)</h4>
+          <p className="text-2xl font-bold">{diffResult.summary.totalRowsB.toLocaleString()}</p>
+          <p className="text-sm text-[var(--color-muted-foreground)]">rows &middot; {diffResult.headersB.length} columns</p>
+        </div>
+      </div>
+
+      {/* Column Statistics Table */}
+      <div className="border border-[var(--color-border)] rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-slate-50 border-b border-[var(--color-border)]">
+          <h3 className="text-sm font-semibold">Column-Level Statistics</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] bg-slate-50/50">
+                <th className="text-left py-2.5 px-4 font-medium">Column</th>
+                <th className="text-right py-2.5 px-4 font-medium">Total</th>
+                <th className="text-right py-2.5 px-4 font-medium">Changed</th>
+                <th className="text-right py-2.5 px-4 font-medium">Added</th>
+                <th className="text-right py-2.5 px-4 font-medium">Removed</th>
+                <th className="text-right py-2.5 px-4 font-medium">% Changed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {diffResult.columnStats.map(stat => (
+                <tr key={stat.columnIndex} className="border-b border-[var(--color-border)] last:border-0 hover:bg-slate-50">
+                  <td className="py-2.5 px-4 font-medium">{stat.columnName}</td>
+                  <td className="text-right py-2.5 px-4">{stat.totalCells}</td>
+                  <td className="text-right py-2.5 px-4 text-amber-600 font-medium">{stat.changedCells || '-'}</td>
+                  <td className="text-right py-2.5 px-4 text-green-600">{stat.addedCells || '-'}</td>
+                  <td className="text-right py-2.5 px-4 text-red-600">{stat.removedCells || '-'}</td>
+                  <td className="text-right py-2.5 px-4">
+                    <div className="flex items-center justify-end gap-2">
+                      <div className="w-16 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                        <div
+                          className="h-full bg-amber-400 rounded-full"
+                          style={{ width: `${Math.min(stat.changePercentage, 100)}%` }}
+                        />
+                      </div>
+                      <span className={stat.changePercentage > 0 ? 'text-amber-600 font-medium' : ''}>
+                        {stat.changePercentage.toFixed(1)}%
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Comparison Time */}
+      <p className="text-xs text-[var(--color-muted-foreground)] text-center">
+        Comparison completed in {diffResult.summary.comparisonTimeMs.toFixed(0)}ms
+      </p>
     </div>
   );
 }
