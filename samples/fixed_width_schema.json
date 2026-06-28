@@ -1,0 +1,16 @@
+{
+  "name": "Employee Record Layout",
+  "description": "Fixed-width employee record format (68 bytes per record)",
+  "recordLength": 68,
+  "fields": [
+    { "id": "f1", "name": "Employee_ID", "startPosition": 0, "length": 4, "dataType": "numeric", "trimMode": "both" },
+    { "id": "f2", "name": "First_Name", "startPosition": 4, "length": 10, "dataType": "string", "trimMode": "right" },
+    { "id": "f3", "name": "Last_Name", "startPosition": 14, "length": 10, "dataType": "string", "trimMode": "right" },
+    { "id": "f4", "name": "Department", "startPosition": 24, "length": 12, "dataType": "string", "trimMode": "right" },
+    { "id": "f5", "name": "Salary", "startPosition": 36, "length": 6, "dataType": "numeric", "trimMode": "both" },
+    { "id": "f6", "name": "Hire_Date", "startPosition": 42, "length": 8, "dataType": "date", "trimMode": "both" },
+    { "id": "f7", "name": "Sequence", "startPosition": 50, "length": 4, "dataType": "numeric", "trimMode": "both" }
+  ],
+  "version": "1.0",
+  "createdAt": "2024-06-28T00:00:00.000Z"
+}

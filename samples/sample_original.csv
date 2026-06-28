@@ -1,0 +1,16 @@
+id,first_name,last_name,email,department,salary,hire_date,status
+1001,John,Smith,john.smith@company.com,Engineering,95000,2019-03-15,active
+1002,Sarah,Johnson,sarah.j@company.com,Marketing,72000,2020-06-01,active
+1003,Michael,Williams,m.williams@company.com,Engineering,105000,2018-01-20,active
+1004,Emily,Brown,emily.brown@company.com,HR,68000,2021-09-10,active
+1005,David,Jones,d.jones@company.com,Finance,88000,2019-11-05,active
+1006,Lisa,Garcia,lisa.garcia@company.com,Engineering,112000,2017-04-22,active
+1007,Robert,Miller,r.miller@company.com,Marketing,75000,2020-02-14,active
+1008,Jennifer,Davis,j.davis@company.com,Engineering,98000,2019-08-30,active
+1009,William,Rodriguez,w.rodriguez@company.com,Finance,91000,2018-12-01,active
+1010,Amanda,Martinez,a.martinez@company.com,HR,65000,2022-01-15,active
+1011,James,Anderson,j.anderson@company.com,Engineering,108000,2017-07-08,active
+1012,Patricia,Taylor,p.taylor@company.com,Marketing,70000,2021-03-20,active
+1013,Charles,Thomas,c.thomas@company.com,Finance,85000,2020-05-12,active
+1014,Maria,Hernandez,m.hernandez@company.com,HR,72000,2019-10-25,active
+1015,Daniel,Moore,d.moore@company.com,Engineering,115000,2016-11-30,active
