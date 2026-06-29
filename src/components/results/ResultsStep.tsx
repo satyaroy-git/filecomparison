@@ -7,12 +7,12 @@ import { ArrowLeft, RotateCcw } from 'lucide-react';
 import type { ResultsTab } from '@/types';
 import { cn } from '@/utils/cn';
 
-const TABS: { id: ResultsTab; label: string; description: string }[] = [
-  { id: 'summary', label: 'Summary', description: 'Overview and column statistics' },
-  { id: 'differences', label: 'Differences', description: 'Rows with changes' },
-  { id: 'only-original', label: 'Only in Original', description: 'Rows removed (not in modified file)' },
-  { id: 'only-modified', label: 'Only in Modified', description: 'Rows added (not in original file)' },
-  { id: 'matched', label: 'Matched', description: 'Rows present in both files (unchanged)' },
+const TABS: { id: ResultsTab; label: string }[] = [
+  { id: 'summary', label: '1. Summary' },
+  { id: 'differences', label: '2. Difference Records' },
+  { id: 'only-original', label: '3. Only in Original File' },
+  { id: 'only-modified', label: '4. Only in Modified File' },
+  { id: 'matched', label: '5. All Matched Rows' },
 ];
 
 export function ResultsStep() {
@@ -66,16 +66,18 @@ export function ResultsStep() {
               )}
             >
               {tab.label}
-              <span
-                className={cn(
-                  'ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full',
-                  activeResultsTab === tab.id
-                    ? 'bg-[var(--color-primary)] text-white'
-                    : 'bg-slate-200 text-slate-600'
-                )}
-              >
-                {getTabCount(tab.id).toLocaleString()}
-              </span>
+              {tab.id !== 'summary' && (
+                <span
+                  className={cn(
+                    'ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full',
+                    activeResultsTab === tab.id
+                      ? 'bg-[var(--color-primary)] text-white'
+                      : 'bg-slate-200 text-slate-600'
+                  )}
+                >
+                  {getTabCount(tab.id).toLocaleString()}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -88,21 +90,11 @@ export function ResultsStep() {
 
       {/* Tab Content */}
       <div className="min-h-[400px]">
-        {activeResultsTab === 'summary' && (
-          <SummaryTabContent />
-        )}
-        {activeResultsTab === 'differences' && (
-          <DiffTable filterStatus="modified" />
-        )}
-        {activeResultsTab === 'only-original' && (
-          <DiffTable filterStatus="removed" />
-        )}
-        {activeResultsTab === 'only-modified' && (
-          <DiffTable filterStatus="added" />
-        )}
-        {activeResultsTab === 'matched' && (
-          <DiffTable filterStatus="unchanged" />
-        )}
+        {activeResultsTab === 'summary' && <SummaryTabContent />}
+        {activeResultsTab === 'differences' && <DiffTable filterStatus="modified" />}
+        {activeResultsTab === 'only-original' && <DiffTable filterStatus="removed" />}
+        {activeResultsTab === 'only-modified' && <DiffTable filterStatus="added" />}
+        {activeResultsTab === 'matched' && <DiffTable filterStatus="unchanged" />}
       </div>
 
       {/* Footer Actions */}
@@ -137,6 +129,26 @@ function SummaryTabContent() {
           <h4 className="text-xs font-semibold text-[var(--color-muted-foreground)] uppercase tracking-wide mb-2">Modified File (B)</h4>
           <p className="text-2xl font-bold">{diffResult.summary.totalRowsB.toLocaleString()}</p>
           <p className="text-sm text-[var(--color-muted-foreground)]">rows &middot; {diffResult.headersB.length} columns</p>
+        </div>
+      </div>
+
+      {/* Breakdown */}
+      <div className="grid grid-cols-4 gap-3">
+        <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-center">
+          <p className="text-2xl font-bold text-amber-700">{diffResult.summary.modifiedRows}</p>
+          <p className="text-xs text-amber-600 mt-0.5">Difference Records</p>
+        </div>
+        <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-center">
+          <p className="text-2xl font-bold text-red-700">{diffResult.summary.removedRows}</p>
+          <p className="text-xs text-red-600 mt-0.5">Only in Original</p>
+        </div>
+        <div className="p-3 rounded-lg border border-green-200 bg-green-50 text-center">
+          <p className="text-2xl font-bold text-green-700">{diffResult.summary.addedRows}</p>
+          <p className="text-xs text-green-600 mt-0.5">Only in Modified</p>
+        </div>
+        <div className="p-3 rounded-lg border border-slate-200 bg-slate-50 text-center">
+          <p className="text-2xl font-bold text-slate-700">{diffResult.summary.unchangedRows}</p>
+          <p className="text-xs text-slate-600 mt-0.5">Matched Rows</p>
         </div>
       </div>
 

@@ -16,65 +16,67 @@ export function ExcelExport() {
     // Sheet 1: Summary
     const summaryData = buildSummarySheet(diffResult);
     const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
+    XLSX.utils.book_append_sheet(wb, summaryWs, '1. Summary');
 
-    // Sheet 2: Differences (modified rows - side by side)
+    // Sheet 2: Difference Records (modified rows - Original vs Modified side by side)
     const diffRows = diffResult.rows.filter(r => r.status === 'modified');
     const diffData = buildDifferencesSheet(diffRows, mappings);
     const diffWs = XLSX.utils.aoa_to_sheet(diffData);
-    XLSX.utils.book_append_sheet(wb, diffWs, 'Differences');
+    XLSX.utils.book_append_sheet(wb, diffWs, '2. Difference Records');
 
-    // Sheet 3: Only in Original (removed rows)
+    // Sheet 3: Only in Original File (removed rows)
     const removedRows = diffResult.rows.filter(r => r.status === 'removed');
     const removedData = buildSingleSideSheet(removedRows, mappings, 'A');
     const removedWs = XLSX.utils.aoa_to_sheet(removedData);
-    XLSX.utils.book_append_sheet(wb, removedWs, 'Only in Original');
+    XLSX.utils.book_append_sheet(wb, removedWs, '3. Only in Original');
 
-    // Sheet 4: Only in Modified (added rows)
+    // Sheet 4: Only in Modified File (added rows)
     const addedRows = diffResult.rows.filter(r => r.status === 'added');
     const addedData = buildSingleSideSheet(addedRows, mappings, 'B');
     const addedWs = XLSX.utils.aoa_to_sheet(addedData);
-    XLSX.utils.book_append_sheet(wb, addedWs, 'Only in Modified');
+    XLSX.utils.book_append_sheet(wb, addedWs, '4. Only in Modified');
 
-    // Sheet 5: Matched (unchanged rows)
+    // Sheet 5: All Matched Rows (unchanged rows)
     const matchedRows = diffResult.rows.filter(r => r.status === 'unchanged');
     const matchedData = buildSingleSideSheet(matchedRows, mappings, 'A');
     const matchedWs = XLSX.utils.aoa_to_sheet(matchedData);
-    XLSX.utils.book_append_sheet(wb, matchedWs, 'Matched');
+    XLSX.utils.book_append_sheet(wb, matchedWs, '5. All Matched Rows');
 
     // Download
     XLSX.writeFile(wb, 'comparison-result.xlsx');
   };
 
   return (
-    <Button size="sm" variant="secondary" onClick={handleExport}>
+    <Button size="sm" onClick={handleExport}>
       <Download className="w-3.5 h-3.5" />
-      Export Excel
+      Download Excel
     </Button>
   );
 }
 
 /**
- * Build Summary sheet data (as array-of-arrays).
+ * Build Summary sheet data.
  */
 function buildSummarySheet(result: DiffResult): (string | number)[][] {
   const rows: (string | number)[][] = [];
 
-  rows.push(['Comparison Summary']);
+  rows.push(['FILE COMPARISON SUMMARY']);
   rows.push([]);
-  rows.push(['Metric', 'Value']);
-  rows.push(['Total Rows in Original (A)', result.summary.totalRowsA]);
-  rows.push(['Total Rows in Modified (B)', result.summary.totalRowsB]);
-  rows.push(['Modified Rows', result.summary.modifiedRows]);
-  rows.push(['Added Rows (only in B)', result.summary.addedRows]);
-  rows.push(['Removed Rows (only in A)', result.summary.removedRows]);
-  rows.push(['Matched Rows (unchanged)', result.summary.unchangedRows]);
+  rows.push(['Metric', 'Count']);
+  rows.push(['Total Rows in Original File (A)', result.summary.totalRowsA]);
+  rows.push(['Total Rows in Modified File (B)', result.summary.totalRowsB]);
+  rows.push([]);
+  rows.push(['Difference Records (key matched, values differ)', result.summary.modifiedRows]);
+  rows.push(['Only in Original File (not in Modified)', result.summary.removedRows]);
+  rows.push(['Only in Modified File (not in Original)', result.summary.addedRows]);
+  rows.push(['All Matched Rows (identical)', result.summary.unchangedRows]);
+  rows.push([]);
   rows.push(['Comparison Time (ms)', Math.round(result.summary.comparisonTimeMs)]);
   rows.push([]);
   rows.push([]);
 
   // Column statistics
-  rows.push(['Column Statistics']);
+  rows.push(['COLUMN-LEVEL STATISTICS']);
   rows.push(['Column Name', 'Total Cells', 'Changed', 'Added', 'Removed', '% Changed']);
   for (const stat of result.columnStats) {
     rows.push([
@@ -91,20 +93,22 @@ function buildSummarySheet(result: DiffResult): (string | number)[][] {
 }
 
 /**
- * Build Differences sheet - shows side-by-side values from both files for each mapped column.
+ * Build Difference Records sheet.
+ * For each mapped column, shows: ColumnName (Original) | ColumnName (Modified) | Changed?
+ * This gives a clear side-by-side view of what changed.
  */
 function buildDifferencesSheet(rows: DiffRow[], mappings: ColumnMapping[]): (string | number | null)[][] {
   const data: (string | number | null)[][] = [];
 
-  // Header row 1: Column names spanning A and B
-  const header1: (string | number | null)[] = ['Row# A', 'Row# B', 'Key'];
+  // Header row
+  const header: (string | number | null)[] = ['Row# Original', 'Row# Modified', 'Key'];
   for (const m of mappings) {
     const colName = m.headerA || m.headerB || 'Column';
-    header1.push(`${colName} (A)`);
-    header1.push(`${colName} (B)`);
-    header1.push(`${colName} Changed?`);
+    header.push(`${colName} (Original)`);
+    header.push(`${colName} (Modified)`);
+    header.push(`${colName} Changed?`);
   }
-  data.push(header1);
+  data.push(header);
 
   // Data rows
   for (const row of rows) {
@@ -125,8 +129,7 @@ function buildDifferencesSheet(rows: DiffRow[], mappings: ColumnMapping[]): (str
 }
 
 /**
- * Build a single-side sheet (for removed, added, or matched rows).
- * Shows values from the relevant side only.
+ * Build a single-side sheet (for Only in Original, Only in Modified, or All Matched).
  */
 function buildSingleSideSheet(
   rows: DiffRow[],
