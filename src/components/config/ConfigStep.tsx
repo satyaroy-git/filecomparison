@@ -7,9 +7,7 @@ import { FixedWidthConfigPanel } from './FixedWidthConfigPanel';
 import { ComparisonConfigPanel } from './ComparisonConfigPanel';
 import { ProfileManager } from './ProfileManager';
 import { ArrowLeft, Play, Loader2, FileSearch } from 'lucide-react';
-import { parseDelimitedFile } from '@/core/delimited-parser';
-import { parseFixedWidthFile } from '@/core/fixed-width-parser';
-import { compareFiles } from '@/core/diff-engine';
+import { workerManager } from '@/workers';
 import { addHistoryEntry } from '@/utils/history';
 
 export function ConfigStep() {
@@ -64,22 +62,25 @@ export function ConfigStep() {
     setError(null);
 
     try {
+      // Parse files using Web Workers (off main thread)
       let parsedA = parsedFileA;
       if (!parsedA) {
+        setParseProgressA({ phase: 'reading', progress: 0, message: 'Reading file A...' });
         if (fileFormat === 'delimited') {
-          parsedA = await parseDelimitedFile(fileA, delimitedConfig, setParseProgressA);
+          parsedA = await workerManager.parseDelimitedFile(fileA, delimitedConfig, setParseProgressA);
         } else {
-          parsedA = await parseFixedWidthFile(fileA, fixedWidthConfig, setParseProgressA);
+          parsedA = await workerManager.parseFixedWidthFile(fileA, fixedWidthConfig, setParseProgressA);
         }
         setParsedFileA(parsedA);
       }
 
       let parsedB = parsedFileB;
       if (!parsedB) {
+        setParseProgressB({ phase: 'reading', progress: 0, message: 'Reading file B...' });
         if (fileFormat === 'delimited') {
-          parsedB = await parseDelimitedFile(fileB, delimitedConfig, setParseProgressB);
+          parsedB = await workerManager.parseDelimitedFile(fileB, delimitedConfig, setParseProgressB);
         } else {
-          parsedB = await parseFixedWidthFile(fileB, fixedWidthConfig, setParseProgressB);
+          parsedB = await workerManager.parseFixedWidthFile(fileB, fixedWidthConfig, setParseProgressB);
         }
         setParsedFileB(parsedB);
       }
@@ -105,29 +106,32 @@ export function ConfigStep() {
     setError(null);
 
     try {
-      // Ensure files are parsed
+      // Parse files using Web Workers
       let parsedA = parsedFileA;
       if (!parsedA) {
+        setParseProgressA({ phase: 'reading', progress: 0, message: 'Reading file A...' });
         if (fileFormat === 'delimited') {
-          parsedA = await parseDelimitedFile(fileA, delimitedConfig, setParseProgressA);
+          parsedA = await workerManager.parseDelimitedFile(fileA, delimitedConfig, setParseProgressA);
         } else {
-          parsedA = await parseFixedWidthFile(fileA, fixedWidthConfig, setParseProgressA);
+          parsedA = await workerManager.parseFixedWidthFile(fileA, fixedWidthConfig, setParseProgressA);
         }
         setParsedFileA(parsedA);
       }
 
       let parsedB = parsedFileB;
       if (!parsedB) {
+        setParseProgressB({ phase: 'reading', progress: 0, message: 'Reading file B...' });
         if (fileFormat === 'delimited') {
-          parsedB = await parseDelimitedFile(fileB, delimitedConfig, setParseProgressB);
+          parsedB = await workerManager.parseDelimitedFile(fileB, delimitedConfig, setParseProgressB);
         } else {
-          parsedB = await parseFixedWidthFile(fileB, fixedWidthConfig, setParseProgressB);
+          parsedB = await workerManager.parseFixedWidthFile(fileB, fixedWidthConfig, setParseProgressB);
         }
         setParsedFileB(parsedB);
       }
 
-      // Run comparison
-      const result = await compareFiles(parsedA, parsedB, comparisonConfig, setCompareProgress);
+      // Run comparison using Web Worker
+      setCompareProgress({ phase: 'matching', progress: 0, message: 'Starting comparison...' });
+      const result = await workerManager.compareFiles(parsedA, parsedB, comparisonConfig, setCompareProgress);
       setDiffResult(result);
 
       // Record in history
@@ -190,7 +194,6 @@ export function ConfigStep() {
         {activeTab === 'format' && (
           <>
             {fileFormat === 'delimited' ? <DelimitedConfigPanel /> : <FixedWidthConfigPanel />}
-            {/* Re-parse button if format settings change */}
             {filesParsed && (
               <div className="mt-4 p-3 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-between">
                 <p className="text-xs text-blue-700">Files already parsed. Change format settings and re-parse if needed.</p>
@@ -213,6 +216,9 @@ export function ConfigStep() {
       {/* Progress */}
       {(isParsing || isLoading) && (
         <div className="space-y-3 p-4 rounded-xl bg-[var(--color-muted)]">
+          <p className="text-xs text-[var(--color-muted-foreground)] mb-2">
+            Processing in background (UI stays responsive)...
+          </p>
           {parseProgressA && (
             <ProgressBar progress={parseProgressA.progress} message={`File A: ${parseProgressA.message}`} />
           )}
