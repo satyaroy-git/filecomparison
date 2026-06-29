@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAppStore } from '@/stores/app-store';
 import { Button } from '@/components/ui/Button';
-import { Plus, Trash2, Upload, Download, Wand2 } from 'lucide-react';
+import { Plus, Trash2, Upload, Download, Wand2, FileUp } from 'lucide-react';
 import type { FixedWidthField, TrimMode, FieldDataType } from '@/types';
 
 export function FixedWidthConfigPanel() {
   const { fixedWidthConfig, setFixedWidthConfig } = useAppStore();
   const [schemaInput, setSchemaInput] = useState('');
   const [showImport, setShowImport] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addField = () => {
     const lastField = fixedWidthConfig.fields[fixedWidthConfig.fields.length - 1];
@@ -36,7 +38,121 @@ export function FixedWidthConfigPanel() {
     setFixedWidthConfig({ fields });
   };
 
-  const handleSchemaImport = () => {
+  /**
+   * Parse a CSV/text schema file with columns: field_name, start_position, width, type
+   */
+  const parseCSVSchema = (text: string): FixedWidthField[] => {
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (lines.length === 0) throw new Error('Schema file is empty');
+
+    const fields: FixedWidthField[] = [];
+    let startLine = 0;
+
+    // Detect if first line is a header row
+    const firstLine = lines[0].toLowerCase();
+    if (
+      firstLine.includes('field_name') ||
+      firstLine.includes('field name') ||
+      firstLine.includes('name') ||
+      firstLine.includes('start')
+    ) {
+      startLine = 1; // Skip header
+    }
+
+    for (let i = startLine; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // Support comma, tab, or pipe as delimiter
+      const parts = line.split(/[,\t|]/).map(p => p.trim());
+
+      if (parts.length < 3) {
+        throw new Error(
+          `Line ${i + 1}: Expected at least 3 columns (field_name, start_position, width). Got: "${line}"`
+        );
+      }
+
+      const fieldName = parts[0];
+      const startPosition = parseInt(parts[1], 10);
+      const width = parseInt(parts[2], 10);
+      const typeRaw = (parts[3] || 'string').toLowerCase();
+
+      if (!fieldName) {
+        throw new Error(`Line ${i + 1}: field_name is empty`);
+      }
+      if (isNaN(startPosition) || startPosition < 0) {
+        throw new Error(`Line ${i + 1}: start_position "${parts[1]}" is not a valid number`);
+      }
+      if (isNaN(width) || width <= 0) {
+        throw new Error(`Line ${i + 1}: width "${parts[2]}" must be a positive number`);
+      }
+
+      // Map type string to FieldDataType
+      let dataType: FieldDataType = 'string';
+      if (typeRaw.startsWith('num') || typeRaw === 'integer' || typeRaw === 'int' || typeRaw === 'decimal') {
+        dataType = 'numeric';
+      } else if (typeRaw.startsWith('date') || typeRaw === 'datetime') {
+        dataType = 'date';
+      } else if (typeRaw === 'bool' || typeRaw === 'boolean') {
+        dataType = 'boolean';
+      }
+
+      fields.push({
+        id: `field_${i}`,
+        name: fieldName,
+        startPosition,
+        length: width,
+        dataType,
+        trimMode: 'both',
+      });
+    }
+
+    if (fields.length === 0) {
+      throw new Error('No valid field definitions found in the file');
+    }
+
+    return fields;
+  };
+
+  /**
+   * Handle CSV/text schema file upload
+   */
+  const handleSchemaFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportError(null);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = reader.result as string;
+        const fields = parseCSVSchema(text);
+
+        // Calculate record length from fields
+        const recordLength = Math.max(...fields.map(f => f.startPosition + f.length));
+
+        setFixedWidthConfig({ fields, recordLength });
+        setShowImport(false);
+        setImportError(null);
+      } catch (err) {
+        setImportError(err instanceof Error ? err.message : 'Failed to parse schema file');
+      }
+    };
+    reader.onerror = () => {
+      setImportError('Failed to read file');
+    };
+    reader.readAsText(file);
+
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
+  /**
+   * Handle JSON schema import (legacy)
+   */
+  const handleJsonSchemaImport = () => {
+    setImportError(null);
     try {
       const schema = JSON.parse(schemaInput);
       if (schema.fields && Array.isArray(schema.fields)) {
@@ -46,26 +162,42 @@ export function FixedWidthConfigPanel() {
         });
         setShowImport(false);
         setSchemaInput('');
+      } else {
+        throw new Error('JSON must contain a "fields" array');
       }
-    } catch {
-      alert('Invalid JSON schema format');
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Invalid JSON schema format');
+    }
+  };
+
+  /**
+   * Handle paste of CSV text schema
+   */
+  const handleTextSchemaImport = () => {
+    setImportError(null);
+    try {
+      const fields = parseCSVSchema(schemaInput);
+      const recordLength = Math.max(...fields.map(f => f.startPosition + f.length));
+      setFixedWidthConfig({ fields, recordLength });
+      setShowImport(false);
+      setSchemaInput('');
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Failed to parse schema');
     }
   };
 
   const handleSchemaExport = () => {
-    const schema = {
-      name: 'Exported Schema',
-      version: '1.0',
-      recordLength: fixedWidthConfig.recordLength || 
-        Math.max(...fixedWidthConfig.fields.map(f => f.startPosition + f.length), 0),
-      fields: fixedWidthConfig.fields,
-      createdAt: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
+    // Export as CSV format: field_name,start_position,width,type
+    const header = 'field_name,start_position,width,type';
+    const rows = fixedWidthConfig.fields.map(f =>
+      `${f.name},${f.startPosition},${f.length},${f.dataType}`
+    );
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'field-layout.json';
+    a.download = 'field-layout.csv';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -78,9 +210,13 @@ export function FixedWidthConfigPanel() {
           <Plus className="w-3.5 h-3.5" />
           Add Field
         </Button>
+        <Button size="sm" variant="secondary" onClick={() => fileInputRef.current?.click()}>
+          <FileUp className="w-3.5 h-3.5" />
+          Upload Schema (CSV)
+        </Button>
         <Button size="sm" variant="secondary" onClick={() => setShowImport(!showImport)}>
           <Upload className="w-3.5 h-3.5" />
-          Import Schema
+          Paste Schema
         </Button>
         {fixedWidthConfig.fields.length > 0 && (
           <Button size="sm" variant="secondary" onClick={handleSchemaExport}>
@@ -88,21 +224,56 @@ export function FixedWidthConfigPanel() {
             Export Schema
           </Button>
         )}
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.txt,.text,.tsv"
+          onChange={handleSchemaFileUpload}
+          className="hidden"
+        />
       </div>
 
-      {/* Import Area */}
+      {/* Schema Format Info */}
+      <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">
+        <p className="text-xs text-blue-800 font-medium mb-1">Schema CSV Format:</p>
+        <code className="text-[11px] text-blue-700 font-mono">field_name,start_position,width,type</code>
+        <p className="text-[11px] text-blue-600 mt-1">
+          Example: <code className="bg-blue-100 px-1 rounded">employee_id,0,5,numeric</code>
+        </p>
+        <p className="text-[11px] text-blue-600 mt-0.5">
+          Types: string, numeric, date, boolean. Header row is auto-detected and skipped.
+        </p>
+      </div>
+
+      {/* Import Error */}
+      {importError && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+          <p className="text-xs text-red-700 font-medium">Import Error:</p>
+          <p className="text-xs text-red-600 mt-0.5">{importError}</p>
+        </div>
+      )}
+
+      {/* Paste Schema Area */}
       {showImport && (
         <div className="p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-muted)] space-y-3">
-          <p className="text-sm font-medium text-[var(--color-foreground)]">Import JSON Schema</p>
+          <p className="text-sm font-medium text-[var(--color-foreground)]">Paste Schema (CSV or JSON)</p>
           <textarea
             value={schemaInput}
             onChange={(e) => setSchemaInput(e.target.value)}
-            placeholder='{"fields": [{"name": "ID", "startPosition": 0, "length": 5, ...}]}'
-            className="w-full h-32 px-3 py-2 rounded-lg border border-[var(--color-border)] bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            placeholder={`field_name,start_position,width,type\nemployee_id,0,5,numeric\nfirst_name,5,20,string\nlast_name,25,20,string\nsalary,45,10,numeric`}
+            className="w-full h-40 px-3 py-2 rounded-lg border border-[var(--color-border)] bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
           />
           <div className="flex gap-2">
-            <Button size="sm" onClick={handleSchemaImport}>Apply</Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowImport(false)}>Cancel</Button>
+            <Button size="sm" onClick={handleTextSchemaImport}>
+              Apply as CSV
+            </Button>
+            <Button size="sm" variant="secondary" onClick={handleJsonSchemaImport}>
+              Apply as JSON
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => { setShowImport(false); setImportError(null); }}>
+              Cancel
+            </Button>
           </div>
         </div>
       )}
@@ -112,10 +283,10 @@ export function FixedWidthConfigPanel() {
         <div className="text-center py-12 border-2 border-dashed border-[var(--color-border)] rounded-xl">
           <Wand2 className="w-10 h-10 mx-auto text-[var(--color-muted-foreground)] mb-3" />
           <p className="text-sm text-[var(--color-muted-foreground)]">
-            No fields defined yet. Add fields manually or import a schema.
+            No fields defined yet. Upload a schema CSV file or add fields manually.
           </p>
           <p className="text-xs text-[var(--color-muted-foreground)] mt-1">
-            Each field needs a name, start position, and length.
+            Schema format: field_name, start_position, width, type
           </p>
         </div>
       ) : (
@@ -124,7 +295,7 @@ export function FixedWidthConfigPanel() {
           <div className="grid grid-cols-[1fr_80px_80px_100px_100px_40px] gap-2 px-2 text-xs font-medium text-[var(--color-muted-foreground)]">
             <span>Name</span>
             <span>Start</span>
-            <span>Length</span>
+            <span>Width</span>
             <span>Type</span>
             <span>Trim</span>
             <span></span>

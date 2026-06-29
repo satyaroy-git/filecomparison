@@ -1,0 +1,8 @@
+field_name,start_position,width,type
+Employee_ID,0,4,numeric
+First_Name,4,10,string
+Last_Name,14,10,string
+Department,24,12,string
+Salary,36,6,numeric
+Hire_Date,42,8,date
+Sequence,50,4,numeric
