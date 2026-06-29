@@ -3,3 +3,8 @@ dist
 .DS_Store
 *.local
 .env
+
+# Large test files (generate locally with samples/generate_large_test_files.py)
+samples/test_60mb_*
+samples/test_250mb_*
+samples/large_*
