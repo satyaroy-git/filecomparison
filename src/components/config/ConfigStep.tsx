@@ -42,14 +42,24 @@ export function ConfigStep() {
   const [isParsing, setIsParsing] = useState(false);
 
   // Auto-parse files when entering this step if not yet parsed
+  // Only auto-parse for delimited files (fixed-width needs field definitions first)
   useEffect(() => {
     if (!parsedFileA && !parsedFileB && fileA && fileB && !isParsing) {
-      handleParseFiles();
+      if (fileFormat === 'delimited') {
+        handleParseFiles();
+      }
     }
   }, []);
 
   const handleParseFiles = async () => {
     if (!fileA || !fileB) return;
+
+    // For fixed-width, check that fields are defined
+    if (fileFormat === 'fixed-width' && fixedWidthConfig.fields.length === 0) {
+      setError('Please define field positions first (upload a schema CSV or add fields manually), then click "Parse Files".');
+      return;
+    }
+
     setIsParsing(true);
     setError(null);
 
@@ -84,6 +94,12 @@ export function ConfigStep() {
 
   const handleCompare = async () => {
     if (!fileA || !fileB) return;
+
+    // For fixed-width, validate fields exist
+    if (fileFormat === 'fixed-width' && fixedWidthConfig.fields.length === 0) {
+      setError('Please define field positions first (upload a schema CSV or add fields manually), then run comparison.');
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
