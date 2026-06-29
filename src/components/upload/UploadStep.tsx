@@ -1,4 +1,5 @@
 import { FileDropZone } from './FileDropZone';
+import { DataPreview } from './DataPreview';
 import { Button } from '@/components/ui/Button';
 import { useAppStore } from '@/stores/app-store';
 import { ArrowRight, FileText, Columns } from 'lucide-react';
@@ -75,6 +76,9 @@ export function UploadStep() {
           </div>
         </div>
       </div>
+
+      {/* Data Preview */}
+      <DataPreview />
 
       {/* Proceed Button */}
       <div className="flex justify-end">

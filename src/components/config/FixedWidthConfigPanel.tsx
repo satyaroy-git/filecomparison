@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useAppStore } from '@/stores/app-store';
 import { Button } from '@/components/ui/Button';
 import { Plus, Trash2, Upload, Download, Wand2, FileUp } from 'lucide-react';
+import { VisualLayoutBuilder } from './VisualLayoutBuilder';
 import type { FixedWidthField, TrimMode, FieldDataType } from '@/types';
 
 export function FixedWidthConfigPanel() {
@@ -233,6 +234,9 @@ export function FixedWidthConfigPanel() {
           className="hidden"
         />
       </div>
+
+      {/* Visual Layout Builder */}
+      <VisualLayoutBuilder />
 
       {/* Schema Format Info */}
       <div className="p-3 rounded-lg bg-blue-50 border border-blue-200">

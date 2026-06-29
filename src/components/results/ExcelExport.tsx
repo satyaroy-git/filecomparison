@@ -20,8 +20,7 @@ export function ExcelExport() {
 
     // Sheet 2: Difference Records (modified rows - Original vs Modified side by side)
     const diffRows = diffResult.rows.filter(r => r.status === 'modified');
-    const diffData = buildDifferencesSheet(diffRows, mappings);
-    const diffWs = XLSX.utils.aoa_to_sheet(diffData);
+    const diffWs = buildDifferencesSheetWithStyles(diffRows, mappings);
     XLSX.utils.book_append_sheet(wb, diffWs, '2. Difference Records');
 
     // Sheet 3: Only in Original File (removed rows)
@@ -93,9 +92,84 @@ function buildSummarySheet(result: DiffResult): (string | number)[][] {
 }
 
 /**
- * Build Difference Records sheet.
- * For each mapped column, shows: ColumnName (Original) | ColumnName (Modified) | Changed?
- * This gives a clear side-by-side view of what changed.
+ * Build Difference Records sheet with cell styling for changed values.
+ * Changed Original cells get red background, Modified cells get green.
+ */
+function buildDifferencesSheetWithStyles(rows: DiffRow[], mappings: ColumnMapping[]): XLSX.WorkSheet {
+  const data: (string | number | null)[][] = [];
+
+  // Header row
+  const header: (string | number | null)[] = ['Row# Original', 'Row# Modified', 'Key'];
+  for (const m of mappings) {
+    const colName = m.headerA || m.headerB || 'Column';
+    header.push(`${colName} (Original)`);
+    header.push(`${colName} (Modified)`);
+    header.push(`${colName} Changed?`);
+  }
+  data.push(header);
+
+  // Data rows
+  for (const row of rows) {
+    const dataRow: (string | number | null)[] = [
+      row.lineNumberA,
+      row.lineNumberB,
+      row.keyValue || '',
+    ];
+    for (const cell of row.cells) {
+      dataRow.push(cell.valueA ?? '');
+      dataRow.push(cell.valueB ?? '');
+      dataRow.push(cell.status === 'changed' ? 'YES' : '');
+    }
+    data.push(dataRow);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // Apply cell styles for changed cells
+  for (let rowIdx = 1; rowIdx < data.length; rowIdx++) {
+    for (let mapIdx = 0; mapIdx < mappings.length; mapIdx++) {
+      const changedColIdx = 3 + mapIdx * 3 + 2;
+      const changedValue = data[rowIdx][changedColIdx];
+
+      if (changedValue === 'YES') {
+        const origColIdx = 3 + mapIdx * 3;
+        const modColIdx = 3 + mapIdx * 3 + 1;
+
+        // Red background for original changed value
+        const origCellRef = XLSX.utils.encode_cell({ r: rowIdx, c: origColIdx });
+        if (ws[origCellRef]) {
+          ws[origCellRef].s = {
+            fill: { fgColor: { rgb: 'FFC7CE' } },
+            font: { color: { rgb: '9C0006' } },
+          };
+        }
+
+        // Green background for modified changed value
+        const modCellRef = XLSX.utils.encode_cell({ r: rowIdx, c: modColIdx });
+        if (ws[modCellRef]) {
+          ws[modCellRef].s = {
+            fill: { fgColor: { rgb: 'C6EFCE' } },
+            font: { color: { rgb: '006100' } },
+          };
+        }
+
+        // Yellow for YES indicator
+        const changedCellRef = XLSX.utils.encode_cell({ r: rowIdx, c: changedColIdx });
+        if (ws[changedCellRef]) {
+          ws[changedCellRef].s = {
+            fill: { fgColor: { rgb: 'FFEB9C' } },
+            font: { color: { rgb: '9C5700' } },
+          };
+        }
+      }
+    }
+  }
+
+  return ws;
+}
+
+/**
+ * Build Difference Records sheet (plain, no styling).
  */
 function buildDifferencesSheet(rows: DiffRow[], mappings: ColumnMapping[]): (string | number | null)[][] {
   const data: (string | number | null)[][] = [];
