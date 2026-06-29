@@ -3,9 +3,11 @@ import { UploadStep } from '@/components/upload/UploadStep';
 import { ConfigStep } from '@/components/config/ConfigStep';
 import { ResultsStep } from '@/components/results/ResultsStep';
 import { useAppStore } from '@/stores/app-store';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 
 export default function App() {
   const { step } = useAppStore();
+  useKeyboardShortcuts();
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -6,16 +6,32 @@ import type { DiffRow, DiffCell, RowStatus, ColumnMapping } from '@/types';
 
 interface DiffTableProps {
   filterStatus: RowStatus;
+  searchQuery?: string;
 }
 
-export function DiffTable({ filterStatus }: DiffTableProps) {
+export function DiffTable({ filterStatus, searchQuery = '' }: DiffTableProps) {
   const { diffResult } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
 
   const filteredRows = useMemo(() => {
     if (!diffResult) return [];
-    return diffResult.rows.filter(row => row.status === filterStatus);
-  }, [diffResult, filterStatus]);
+    let rows = diffResult.rows.filter(row => row.status === filterStatus);
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      rows = rows.filter(row =>
+        row.cells.some(cell => {
+          const valA = (cell.valueA ?? '').toLowerCase();
+          const valB = (cell.valueB ?? '').toLowerCase();
+          return valA.includes(query) || valB.includes(query);
+        }) ||
+        (row.keyValue?.toLowerCase().includes(query))
+      );
+    }
+
+    return rows;
+  }, [diffResult, filterStatus, searchQuery]);
 
   const mappings: ColumnMapping[] = useMemo(() => {
     if (!diffResult) return [];

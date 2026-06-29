@@ -3,9 +3,12 @@ import { Button } from '@/components/ui/Button';
 import { SummaryPanel } from './SummaryPanel';
 import { DiffTable } from './DiffTable';
 import { ExcelExport } from './ExcelExport';
-import { ArrowLeft, RotateCcw } from 'lucide-react';
+import { PdfExport } from './PdfExport';
+import { SearchFilter } from './SearchFilter';
+import { ArrowLeft, RotateCcw, Keyboard } from 'lucide-react';
 import type { ResultsTab } from '@/types';
 import { cn } from '@/utils/cn';
+import { useState } from 'react';
 
 const TABS: { id: ResultsTab; label: string }[] = [
   { id: 'summary', label: '1. Summary' },
@@ -23,6 +26,9 @@ export function ResultsStep() {
     setStep,
     reset,
   } = useAppStore();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   if (!diffResult) {
     return (
@@ -82,19 +88,48 @@ export function ResultsStep() {
           ))}
         </div>
 
-        {/* Export Button */}
-        <div className="flex-shrink-0 pl-4">
+        {/* Export Buttons */}
+        <div className="flex-shrink-0 pl-4 flex gap-2">
+          <PdfExport />
           <ExcelExport />
         </div>
       </div>
 
+      {/* Search + Shortcuts */}
+      {activeResultsTab !== 'summary' && (
+        <div className="flex items-center gap-3">
+          <div className="flex-1">
+            <SearchFilter
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search within results (filters rows containing text)..."
+            />
+          </div>
+          <button
+            onClick={() => setShowShortcuts(!showShortcuts)}
+            className="p-2 rounded-lg hover:bg-slate-100 text-[var(--color-muted-foreground)]"
+            title="Keyboard shortcuts"
+          >
+            <Keyboard className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Keyboard Shortcuts Help */}
+      {showShortcuts && (
+        <div className="p-3 rounded-lg bg-slate-100 border border-[var(--color-border)] text-xs text-[var(--color-muted-foreground)]">
+          <span className="font-semibold text-[var(--color-foreground)]">Keyboard Shortcuts:</span>{' '}
+          Ctrl+1-5 Switch tabs &middot; Ctrl+D Differences &middot; Escape Go back &middot; Ctrl+Shift+N New comparison
+        </div>
+      )}
+
       {/* Tab Content */}
       <div className="min-h-[400px]">
         {activeResultsTab === 'summary' && <SummaryTabContent />}
-        {activeResultsTab === 'differences' && <DiffTable filterStatus="modified" />}
-        {activeResultsTab === 'only-original' && <DiffTable filterStatus="removed" />}
-        {activeResultsTab === 'only-modified' && <DiffTable filterStatus="added" />}
-        {activeResultsTab === 'matched' && <DiffTable filterStatus="unchanged" />}
+        {activeResultsTab === 'differences' && <DiffTable filterStatus="modified" searchQuery={searchQuery} />}
+        {activeResultsTab === 'only-original' && <DiffTable filterStatus="removed" searchQuery={searchQuery} />}
+        {activeResultsTab === 'only-modified' && <DiffTable filterStatus="added" searchQuery={searchQuery} />}
+        {activeResultsTab === 'matched' && <DiffTable filterStatus="unchanged" searchQuery={searchQuery} />}
       </div>
 
       {/* Footer Actions */}

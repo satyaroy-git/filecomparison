@@ -5,10 +5,12 @@ import { ProgressBar } from '@/components/ui/ProgressBar';
 import { DelimitedConfigPanel } from './DelimitedConfigPanel';
 import { FixedWidthConfigPanel } from './FixedWidthConfigPanel';
 import { ComparisonConfigPanel } from './ComparisonConfigPanel';
+import { ProfileManager } from './ProfileManager';
 import { ArrowLeft, Play, Loader2, FileSearch } from 'lucide-react';
 import { parseDelimitedFile } from '@/core/delimited-parser';
 import { parseFixedWidthFile } from '@/core/fixed-width-parser';
 import { compareFiles } from '@/core/diff-engine';
+import { addHistoryEntry } from '@/utils/history';
 
 export function ConfigStep() {
   const {
@@ -111,6 +113,20 @@ export function ConfigStep() {
       // Run comparison
       const result = await compareFiles(parsedA, parsedB, comparisonConfig, setCompareProgress);
       setDiffResult(result);
+
+      // Record in history
+      addHistoryEntry({
+        fileAName: fileA.name,
+        fileBName: fileB.name,
+        fileFormat,
+        totalRowsA: result.summary.totalRowsA,
+        totalRowsB: result.summary.totalRowsB,
+        modifiedRows: result.summary.modifiedRows,
+        addedRows: result.summary.addedRows,
+        removedRows: result.summary.removedRows,
+        matchedRows: result.summary.unchangedRows,
+      });
+
       setStep('results');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
@@ -170,7 +186,12 @@ export function ConfigStep() {
             )}
           </>
         )}
-        {activeTab === 'comparison' && <ComparisonConfigPanel />}
+        {activeTab === 'comparison' && (
+          <div className="space-y-6">
+            <ProfileManager />
+            <ComparisonConfigPanel />
+          </div>
+        )}
       </div>
 
       {/* Progress */}
