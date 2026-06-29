@@ -23,19 +23,12 @@ export async function parseDelimitedFile(
   
   onProgress?.({ phase: 'parsing', progress: 10, message: 'Detecting format...' });
 
-  // Auto-detect delimiter if needed
-  let effectiveDelimiter = config.delimiter === 'custom' 
-    ? (config.customDelimiter || ',')
-    : config.delimiter;
-
-  // If we need to auto-detect
-  if (!effectiveDelimiter || effectiveDelimiter === ',') {
-    const detection = detectDelimiter(text.substring(0, 10000));
-    if (detection.confidence > 0.5) {
-      effectiveDelimiter = detection.delimiter === 'custom'
-        ? (detection.customDelimiter || ',')
-        : detection.delimiter;
-    }
+  // Use the configured delimiter directly - don't auto-detect over user's choice
+  let effectiveDelimiter: string;
+  if (config.delimiter === 'custom') {
+    effectiveDelimiter = config.customDelimiter || ',';
+  } else {
+    effectiveDelimiter = config.delimiter;
   }
 
   // Auto-detect header
@@ -98,6 +91,15 @@ export async function parseDelimitedFile(
         if (!hasHeader || headers.length === 0) {
           const maxCols = rows.reduce((max, row) => Math.max(max, row.length), 0);
           headers = Array.from({ length: maxCols }, (_, i) => `Column ${i + 1}`);
+        }
+
+        // Warn if only 1 column detected — likely wrong delimiter
+        if (headers.length <= 1 && rows.length > 0) {
+          parseErrors.push({
+            row: 0,
+            message: `Only 1 column detected. The delimiter "${effectiveDelimiter}" may be incorrect for this file. Please check Format Settings.`,
+            type: 'warning',
+          });
         }
 
         // Normalize row lengths to match header count
