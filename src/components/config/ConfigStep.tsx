@@ -7,7 +7,9 @@ import { FixedWidthConfigPanel } from './FixedWidthConfigPanel';
 import { ComparisonConfigPanel } from './ComparisonConfigPanel';
 import { ProfileManager } from './ProfileManager';
 import { ArrowLeft, Play, Loader2, FileSearch } from 'lucide-react';
-import { workerManager } from '@/workers';
+import { parseDelimitedFile } from '@/core/delimited-parser';
+import { parseFixedWidthFile } from '@/core/fixed-width-parser';
+import { compareFiles } from '@/core/diff-engine';
 import { addHistoryEntry } from '@/utils/history';
 
 export function ConfigStep() {
@@ -49,6 +51,25 @@ export function ConfigStep() {
     }
   }, []);
 
+  /**
+   * Parse a single file with a yield to keep UI responsive.
+   */
+  const parseFileAsync = async (
+    file: File,
+    setProgress: (p: any) => void
+  ) => {
+    // Yield to allow UI to update before heavy work
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    setProgress({ phase: 'reading', progress: 0, message: 'Reading file...' });
+
+    if (fileFormat === 'delimited') {
+      return await parseDelimitedFile(file, delimitedConfig, setProgress);
+    } else {
+      return await parseFixedWidthFile(file, fixedWidthConfig, setProgress);
+    }
+  };
+
   const handleParseFiles = async () => {
     if (!fileA || !fileB) return;
 
@@ -62,26 +83,18 @@ export function ConfigStep() {
     setError(null);
 
     try {
-      // Parse files using Web Workers (off main thread)
       let parsedA = parsedFileA;
       if (!parsedA) {
-        setParseProgressA({ phase: 'reading', progress: 0, message: 'Reading file A...' });
-        if (fileFormat === 'delimited') {
-          parsedA = await workerManager.parseDelimitedFile(fileA, delimitedConfig, setParseProgressA);
-        } else {
-          parsedA = await workerManager.parseFixedWidthFile(fileA, fixedWidthConfig, setParseProgressA);
-        }
+        parsedA = await parseFileAsync(fileA, setParseProgressA);
         setParsedFileA(parsedA);
       }
 
+      // Small delay between files to let UI breathe
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       let parsedB = parsedFileB;
       if (!parsedB) {
-        setParseProgressB({ phase: 'reading', progress: 0, message: 'Reading file B...' });
-        if (fileFormat === 'delimited') {
-          parsedB = await workerManager.parseDelimitedFile(fileB, delimitedConfig, setParseProgressB);
-        } else {
-          parsedB = await workerManager.parseFixedWidthFile(fileB, fixedWidthConfig, setParseProgressB);
-        }
+        parsedB = await parseFileAsync(fileB, setParseProgressB);
         setParsedFileB(parsedB);
       }
     } catch (err) {
@@ -106,32 +119,26 @@ export function ConfigStep() {
     setError(null);
 
     try {
-      // Parse files using Web Workers
+      // Parse files if not already parsed
       let parsedA = parsedFileA;
       if (!parsedA) {
-        setParseProgressA({ phase: 'reading', progress: 0, message: 'Reading file A...' });
-        if (fileFormat === 'delimited') {
-          parsedA = await workerManager.parseDelimitedFile(fileA, delimitedConfig, setParseProgressA);
-        } else {
-          parsedA = await workerManager.parseFixedWidthFile(fileA, fixedWidthConfig, setParseProgressA);
-        }
+        parsedA = await parseFileAsync(fileA, setParseProgressA);
         setParsedFileA(parsedA);
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       let parsedB = parsedFileB;
       if (!parsedB) {
-        setParseProgressB({ phase: 'reading', progress: 0, message: 'Reading file B...' });
-        if (fileFormat === 'delimited') {
-          parsedB = await workerManager.parseDelimitedFile(fileB, delimitedConfig, setParseProgressB);
-        } else {
-          parsedB = await workerManager.parseFixedWidthFile(fileB, fixedWidthConfig, setParseProgressB);
-        }
+        parsedB = await parseFileAsync(fileB, setParseProgressB);
         setParsedFileB(parsedB);
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Run comparison using Web Worker
+      // Run comparison
       setCompareProgress({ phase: 'matching', progress: 0, message: 'Starting comparison...' });
-      const result = await workerManager.compareFiles(parsedA, parsedB, comparisonConfig, setCompareProgress);
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      const result = await compareFiles(parsedA, parsedB, comparisonConfig, setCompareProgress);
       setDiffResult(result);
 
       // Record in history
@@ -217,7 +224,7 @@ export function ConfigStep() {
       {(isParsing || isLoading) && (
         <div className="space-y-3 p-4 rounded-xl bg-[var(--color-muted)]">
           <p className="text-xs text-[var(--color-muted-foreground)] mb-2">
-            Processing in background (UI stays responsive)...
+            Processing... This may take a moment for large files.
           </p>
           {parseProgressA && (
             <ProgressBar progress={parseProgressA.progress} message={`File A: ${parseProgressA.message}`} />
