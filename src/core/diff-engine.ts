@@ -35,14 +35,14 @@ export async function compareFiles(
 
   switch (config.matchStrategy) {
     case 'key':
-      diffRows = compareByKey(fileA, fileB, config, mappings, onProgress);
+      diffRows = await compareByKey(fileA, fileB, config, mappings, onProgress);
       break;
     case 'fuzzy':
-      diffRows = compareByFuzzy(fileA, fileB, config, mappings, onProgress);
+      diffRows = await compareByFuzzy(fileA, fileB, config, mappings, onProgress);
       break;
     case 'position':
     default:
-      diffRows = compareByPosition(fileA, fileB, config, mappings, onProgress);
+      diffRows = await compareByPosition(fileA, fileB, config, mappings, onProgress);
       break;
   }
 
@@ -131,15 +131,22 @@ function autoMapColumns(headersA: string[], headersB: string[]): ColumnMapping[]
 }
 
 /**
+ * Yield control to the browser to keep UI responsive.
+ */
+function yieldToMain(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+/**
  * Compare files by position (row-by-row, line number based).
  */
-function compareByPosition(
+async function compareByPosition(
   fileA: ParsedFile,
   fileB: ParsedFile,
   config: ComparisonConfig,
   mappings: ColumnMapping[],
   onProgress?: (progress: CompareProgress) => void
-): DiffRow[] {
+): Promise<DiffRow[]> {
   const maxRows = Math.max(fileA.rows.length, fileB.rows.length);
   const diffRows: DiffRow[] = [];
 
@@ -186,12 +193,16 @@ function compareByPosition(
       });
     }
 
-    if (i % 5000 === 0 && onProgress) {
-      onProgress({
-        phase: 'diffing',
-        progress: 10 + (i / maxRows) * 70,
-        message: `Comparing row ${i.toLocaleString()} of ${maxRows.toLocaleString()}...`,
-      });
+    // Yield every 10000 rows to keep UI responsive
+    if (i % 10000 === 0) {
+      if (onProgress) {
+        onProgress({
+          phase: 'diffing',
+          progress: 10 + (i / maxRows) * 70,
+          message: `Comparing row ${i.toLocaleString()} of ${maxRows.toLocaleString()}...`,
+        });
+      }
+      await yieldToMain();
     }
   }
 
@@ -201,18 +212,18 @@ function compareByPosition(
 /**
  * Compare files by key column(s) - matching rows with the same key value.
  */
-function compareByKey(
+async function compareByKey(
   fileA: ParsedFile,
   fileB: ParsedFile,
   config: ComparisonConfig,
   mappings: ColumnMapping[],
   onProgress?: (progress: CompareProgress) => void
-): DiffRow[] {
+): Promise<DiffRow[]> {
   const keyColumnsA = config.keyColumns;
   const keyColumnsB = config.keyColumnsB.length > 0 ? config.keyColumnsB : config.keyColumns;
   
   if (keyColumnsA.length === 0) {
-    return compareByPosition(fileA, fileB, config, mappings, onProgress);
+    return await compareByPosition(fileA, fileB, config, mappings, onProgress);
   }
 
   // Build key maps using respective key columns
@@ -309,12 +320,15 @@ function compareByKey(
     }
 
     processed++;
-    if (processed % 5000 === 0 && onProgress) {
-      onProgress({
-        phase: 'diffing',
-        progress: 10 + (processed / totalKeys) * 70,
-        message: `Comparing key ${processed.toLocaleString()} of ${totalKeys.toLocaleString()}...`,
-      });
+    if (processed % 10000 === 0) {
+      if (onProgress) {
+        onProgress({
+          phase: 'diffing',
+          progress: 10 + (processed / totalKeys) * 70,
+          message: `Comparing key ${processed.toLocaleString()} of ${totalKeys.toLocaleString()}...`,
+        });
+      }
+      await yieldToMain();
     }
   }
 
@@ -352,13 +366,13 @@ function compareByKey(
 /**
  * Compare files using fuzzy matching when no exact key exists.
  */
-function compareByFuzzy(
+async function compareByFuzzy(
   fileA: ParsedFile,
   fileB: ParsedFile,
   config: ComparisonConfig,
   mappings: ColumnMapping[],
   onProgress?: (progress: CompareProgress) => void
-): DiffRow[] {
+): Promise<DiffRow[]> {
   const threshold = config.fuzzyThreshold;
   const diffRows: DiffRow[] = [];
   const matchedB = new Set<number>();
@@ -406,12 +420,15 @@ function compareByFuzzy(
       });
     }
 
-    if (i % 1000 === 0 && onProgress) {
-      onProgress({
-        phase: 'diffing',
-        progress: 10 + (i / fileA.rows.length) * 60,
-        message: `Fuzzy matching row ${i.toLocaleString()}...`,
-      });
+    if (i % 1000 === 0) {
+      if (onProgress) {
+        onProgress({
+          phase: 'diffing',
+          progress: 10 + (i / fileA.rows.length) * 60,
+          message: `Fuzzy matching row ${i.toLocaleString()}...`,
+        });
+      }
+      await yieldToMain();
     }
   }
 
