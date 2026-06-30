@@ -1,8 +1,9 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '@/stores/app-store';
 import { cn } from '@/utils/cn';
 import type { DiffRow, DiffCell, RowStatus, ColumnMapping } from '@/types';
+import React from 'react';
 
 interface DiffTableProps {
   filterStatus: RowStatus;
@@ -12,12 +13,12 @@ interface DiffTableProps {
 export function DiffTable({ filterStatus, searchQuery = '' }: DiffTableProps) {
   const { diffResult } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
 
   const filteredRows = useMemo(() => {
     if (!diffResult) return [];
     let rows = diffResult.rows.filter(row => row.status === filterStatus);
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       rows = rows.filter(row =>
@@ -35,11 +36,9 @@ export function DiffTable({ filterStatus, searchQuery = '' }: DiffTableProps) {
 
   const mappings: ColumnMapping[] = useMemo(() => {
     if (!diffResult) return [];
-    // Use columnMappings from diff result; if empty, fallback to headers
     if (diffResult.columnMappings && diffResult.columnMappings.length > 0) {
       return diffResult.columnMappings;
     }
-    // Fallback: generate from headersA
     return diffResult.headersA.map((h, i) => ({
       columnIndexA: i,
       columnIndexB: i < diffResult.headersB.length ? i : -1,
@@ -51,9 +50,16 @@ export function DiffTable({ filterStatus, searchQuery = '' }: DiffTableProps) {
   const rowVirtualizer = useVirtualizer({
     count: filteredRows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 44,
+    estimateSize: () => 40,
     overscan: 20,
   });
+
+  // Sync horizontal scroll between header and body
+  const handleBodyScroll = useCallback(() => {
+    if (parentRef.current && headerRef.current) {
+      headerRef.current.scrollLeft = parentRef.current.scrollLeft;
+    }
+  }, []);
 
   if (!diffResult) return null;
 
@@ -65,8 +71,14 @@ export function DiffTable({ filterStatus, searchQuery = '' }: DiffTableProps) {
     );
   }
 
-  // For "modified" (difference records), show side-by-side Original vs Modified for each column
   const showSideBySide = filterStatus === 'modified';
+  const COL_WIDTH = 140;
+  const ROW_NUM_WIDTH = 50;
+
+  // Calculate total table width
+  const totalWidth = showSideBySide
+    ? ROW_NUM_WIDTH * 2 + mappings.length * COL_WIDTH * 2
+    : ROW_NUM_WIDTH + mappings.length * 150;
 
   const descriptions: Record<string, string> = {
     modified: 'Rows where key matched but column values differ. Each column shows Original (A) vs Modified (B) side by side.',
@@ -82,115 +94,125 @@ export function DiffTable({ filterStatus, searchQuery = '' }: DiffTableProps) {
       </p>
 
       <div className="border border-[var(--color-border)] rounded-xl overflow-hidden">
-        {/* Scrollable container for both header and body */}
-        <div className="overflow-x-auto">
-          {/* Table Header */}
-          <table className="w-max min-w-full border-collapse">
-            <thead>
-              {showSideBySide ? (
-                <>
-                  {/* Row 1: Column names */}
-                  <tr className="bg-slate-100 border-b border-[var(--color-border)]">
-                    <th className="w-[50px] px-2 py-2 text-center text-[11px] font-semibold text-[var(--color-muted-foreground)] border-r border-[var(--color-border)]" rowSpan={2}>#A</th>
-                    <th className="w-[50px] px-2 py-2 text-center text-[11px] font-semibold text-[var(--color-muted-foreground)] border-r border-[var(--color-border)]" rowSpan={2}>#B</th>
-                    {mappings.map((m, idx) => (
-                      <th
-                        key={idx}
-                        colSpan={2}
-                        className="px-2 py-1.5 text-center text-xs font-bold text-[var(--color-foreground)] border-r border-b border-[var(--color-border)]"
-                      >
-                        {m.headerA || m.headerB || `Column ${idx + 1}`}
-                      </th>
-                    ))}
-                  </tr>
-                  {/* Row 2: Original / Modified sub-headers */}
-                  <tr className="bg-slate-50 border-b border-[var(--color-border)]">
-                    {mappings.map((_, idx) => (
-                      <React.Fragment key={idx}>
-                        <th className="w-[140px] px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-orange-700 bg-orange-50 border-r border-[var(--color-border)]">
-                          Original (A)
-                        </th>
-                        <th className="w-[140px] px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border-r border-[var(--color-border)]">
-                          Modified (B)
-                        </th>
-                      </React.Fragment>
-                    ))}
-                  </tr>
-                </>
-              ) : (
-                <tr className="bg-slate-100 border-b border-[var(--color-border)]">
-                  <th className="w-[50px] px-2 py-2.5 text-center text-[11px] font-semibold text-[var(--color-muted-foreground)] border-r border-[var(--color-border)]">
-                    {filterStatus === 'added' ? '#B' : '#A'}
-                  </th>
+        {/* Fixed Header - scrolls horizontally in sync with body */}
+        <div
+          ref={headerRef}
+          className="overflow-hidden border-b border-[var(--color-border)]"
+        >
+          <div style={{ width: totalWidth }}>
+            {showSideBySide ? (
+              <>
+                {/* Row 1: Column names */}
+                <div className="flex bg-slate-100 border-b border-[var(--color-border)]">
+                  <div className="flex-shrink-0 flex items-center justify-center text-[11px] font-semibold text-[var(--color-muted-foreground)] border-r border-[var(--color-border)]" style={{ width: ROW_NUM_WIDTH }}>#A</div>
+                  <div className="flex-shrink-0 flex items-center justify-center text-[11px] font-semibold text-[var(--color-muted-foreground)] border-r border-[var(--color-border)]" style={{ width: ROW_NUM_WIDTH }}>#B</div>
                   {mappings.map((m, idx) => (
-                    <th
+                    <div
                       key={idx}
-                      className="w-[150px] px-2 py-2.5 text-left text-[11px] font-semibold text-[var(--color-muted-foreground)] border-r border-[var(--color-border)]"
+                      className="flex-shrink-0 flex items-center justify-center text-xs font-bold text-[var(--color-foreground)] border-r border-[var(--color-border)] py-1.5"
+                      style={{ width: COL_WIDTH * 2 }}
                     >
                       {m.headerA || m.headerB || `Column ${idx + 1}`}
-                    </th>
+                    </div>
                   ))}
-                </tr>
-              )}
-            </thead>
-          </table>
-
-          {/* Virtualized Body */}
-          <div
-            ref={parentRef}
-            style={{ height: Math.min(filteredRows.length * 44, 520), overflow: 'auto' }}
-          >
-            <div
-              style={{
-                height: `${rowVirtualizer.getTotalSize()}px`,
-                position: 'relative',
-              }}
-            >
-              {rowVirtualizer.getVirtualItems().map(virtualRow => {
-                const row = filteredRows[virtualRow.index];
-                return (
+                </div>
+                {/* Row 2: Original / Modified sub-headers */}
+                <div className="flex bg-slate-50">
+                  <div className="flex-shrink-0 border-r border-[var(--color-border)]" style={{ width: ROW_NUM_WIDTH }}></div>
+                  <div className="flex-shrink-0 border-r border-[var(--color-border)]" style={{ width: ROW_NUM_WIDTH }}></div>
+                  {mappings.map((_, idx) => (
+                    <React.Fragment key={idx}>
+                      <div
+                        className="flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase tracking-wider text-orange-700 bg-orange-50 border-r border-[var(--color-border)] py-1"
+                        style={{ width: COL_WIDTH }}
+                      >
+                        Original (A)
+                      </div>
+                      <div
+                        className="flex-shrink-0 flex items-center justify-center text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 border-r border-[var(--color-border)] py-1"
+                        style={{ width: COL_WIDTH }}
+                      >
+                        Modified (B)
+                      </div>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex bg-slate-100">
+                <div className="flex-shrink-0 flex items-center justify-center text-[11px] font-semibold text-[var(--color-muted-foreground)] border-r border-[var(--color-border)] py-2.5" style={{ width: ROW_NUM_WIDTH }}>
+                  {filterStatus === 'added' ? '#B' : '#A'}
+                </div>
+                {mappings.map((m, idx) => (
                   <div
-                    key={virtualRow.key}
-                    className="absolute left-0 w-max min-w-full border-b border-[var(--color-border)]"
-                    style={{
-                      height: `${virtualRow.size}px`,
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
+                    key={idx}
+                    className="flex-shrink-0 flex items-center px-2 text-[11px] font-semibold text-[var(--color-muted-foreground)] border-r border-[var(--color-border)] py-2.5 truncate"
+                    style={{ width: 150 }}
                   >
-                    <table className="w-max min-w-full border-collapse h-full">
-                      <tbody>
-                        <tr className={cn('h-full', getRowBgColor(row.status))}>
-                          {showSideBySide ? (
-                            <>
-                              <td className="w-[50px] px-2 text-center text-xs text-[var(--color-muted-foreground)] font-mono border-r border-[var(--color-border)]">
-                                {row.lineNumberA || '-'}
-                              </td>
-                              <td className="w-[50px] px-2 text-center text-xs text-[var(--color-muted-foreground)] font-mono border-r border-[var(--color-border)]">
-                                {row.lineNumberB || '-'}
-                              </td>
-                              {row.cells.map((cell, i) => (
-                                <SideBySideCells key={i} cell={cell} />
-                              ))}
-                            </>
-                          ) : (
-                            <>
-                              <td className="w-[50px] px-2 text-center text-xs text-[var(--color-muted-foreground)] font-mono border-r border-[var(--color-border)]">
-                                {filterStatus === 'added' ? (row.lineNumberB || '-') : (row.lineNumberA || '-')}
-                              </td>
-                              {row.cells.map((cell, i) => (
-                                <td key={i} className="w-[150px] px-2 text-xs border-r border-[var(--color-border)] truncate">
-                                  {filterStatus === 'added' ? (cell.valueB ?? '') : (cell.valueA ?? '')}
-                                </td>
-                              ))}
-                            </>
-                          )}
-                        </tr>
-                      </tbody>
-                    </table>
+                    {m.headerA || m.headerB || `Column ${idx + 1}`}
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Scrollable Body */}
+        <div
+          ref={parentRef}
+          onScroll={handleBodyScroll}
+          className="overflow-auto"
+          style={{ height: Math.min(filteredRows.length * 40, 520) }}
+        >
+          <div
+            style={{
+              height: rowVirtualizer.getTotalSize(),
+              width: totalWidth,
+              position: 'relative',
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map(virtualRow => {
+              const row = filteredRows[virtualRow.index];
+              return (
+                <div
+                  key={virtualRow.key}
+                  className={cn(
+                    'absolute top-0 left-0 flex items-stretch border-b border-[var(--color-border)]',
+                    getRowBgColor(row.status)
+                  )}
+                  style={{
+                    height: virtualRow.size,
+                    width: totalWidth,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  {showSideBySide ? (
+                    <>
+                      <div className="flex-shrink-0 flex items-center justify-center text-xs text-[var(--color-muted-foreground)] font-mono border-r border-[var(--color-border)]" style={{ width: ROW_NUM_WIDTH }}>
+                        {row.lineNumberA || '-'}
+                      </div>
+                      <div className="flex-shrink-0 flex items-center justify-center text-xs text-[var(--color-muted-foreground)] font-mono border-r border-[var(--color-border)]" style={{ width: ROW_NUM_WIDTH }}>
+                        {row.lineNumberB || '-'}
+                      </div>
+                      {row.cells.map((cell, i) => (
+                        <SideBySideCells key={i} cell={cell} width={COL_WIDTH} />
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex-shrink-0 flex items-center justify-center text-xs text-[var(--color-muted-foreground)] font-mono border-r border-[var(--color-border)]" style={{ width: ROW_NUM_WIDTH }}>
+                        {filterStatus === 'added' ? (row.lineNumberB || '-') : (row.lineNumberA || '-')}
+                      </div>
+                      {row.cells.map((cell, i) => (
+                        <div key={i} className="flex-shrink-0 flex items-center px-2 text-xs border-r border-[var(--color-border)] truncate" style={{ width: 150 }}>
+                          {filterStatus === 'added' ? (cell.valueB ?? '') : (cell.valueA ?? '')}
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -203,34 +225,29 @@ export function DiffTable({ filterStatus, searchQuery = '' }: DiffTableProps) {
   );
 }
 
-/**
- * Renders two <td> cells side by side for a single column in the Difference Records tab.
- * Original (A) value on left, Modified (B) value on right.
- * Highlights when values are different.
- */
-function SideBySideCells({ cell }: { cell: DiffCell }) {
+function SideBySideCells({ cell, width }: { cell: DiffCell; width: number }) {
   const isChanged = cell.status === 'changed';
 
   return (
     <>
-      {/* Original (A) value */}
-      <td
+      <div
         className={cn(
-          'w-[140px] px-2 text-xs border-r border-[var(--color-border)] truncate',
+          'flex-shrink-0 flex items-center px-2 text-xs border-r border-[var(--color-border)] truncate',
           isChanged ? 'bg-red-100 text-red-900 font-semibold' : ''
         )}
+        style={{ width }}
       >
         {cell.valueA ?? ''}
-      </td>
-      {/* Modified (B) value */}
-      <td
+      </div>
+      <div
         className={cn(
-          'w-[140px] px-2 text-xs border-r border-[var(--color-border)] truncate',
+          'flex-shrink-0 flex items-center px-2 text-xs border-r border-[var(--color-border)] truncate',
           isChanged ? 'bg-green-100 text-green-900 font-semibold' : ''
         )}
+        style={{ width }}
       >
         {cell.valueB ?? ''}
-      </td>
+      </div>
     </>
   );
 }
@@ -243,6 +260,3 @@ function getRowBgColor(status: RowStatus): string {
     default: return 'hover:bg-slate-50/50';
   }
 }
-
-// Need React import for Fragment
-import React from 'react';
