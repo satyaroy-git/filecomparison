@@ -1,5 +1,5 @@
 import { useAppStore } from '@/stores/app-store';
-import { GitCompareArrows, RotateCcw } from 'lucide-react';
+import { Shield, RotateCcw } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import type { AppStep } from '@/stores/app-store';
 
@@ -15,20 +15,20 @@ export function Header() {
   const currentStepIndex = steps.findIndex(s => s.id === step || (step === 'compare' && s.id === 'configure'));
 
   return (
-    <header className="bg-white border-b border-[var(--color-border)] sticky top-0 z-50">
+    <header className="bg-[var(--color-header-bg)] sticky top-0 z-50 shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-[var(--color-primary)] flex items-center justify-center">
-              <GitCompareArrows className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center shadow-md">
+              <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-[var(--color-foreground)] leading-none">
-                FileDiff Pro
+              <h1 className="text-base font-bold text-white leading-none tracking-tight">
+                DeltaVault
               </h1>
-              <p className="text-[10px] text-[var(--color-muted-foreground)] leading-none mt-0.5">
-                Delimited & Fixed-Width Comparison
+              <p className="text-[10px] text-indigo-300 leading-none mt-0.5">
+                Precision File Comparison
               </p>
             </div>
           </div>
@@ -42,8 +42,8 @@ export function Header() {
                     className={cn(
                       'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors',
                       index <= currentStepIndex
-                        ? 'bg-[var(--color-primary)] text-white'
-                        : 'bg-[var(--color-muted)] text-[var(--color-muted-foreground)]'
+                        ? 'bg-indigo-400 text-white'
+                        : 'bg-indigo-900/50 text-indigo-400'
                     )}
                   >
                     {s.number}
@@ -52,8 +52,8 @@ export function Header() {
                     className={cn(
                       'text-xs font-medium',
                       index <= currentStepIndex
-                        ? 'text-[var(--color-foreground)]'
-                        : 'text-[var(--color-muted-foreground)]'
+                        ? 'text-white'
+                        : 'text-indigo-400/70'
                     )}
                   >
                     {s.label}
@@ -63,7 +63,7 @@ export function Header() {
                   <div
                     className={cn(
                       'w-8 h-0.5 mx-2 rounded-full',
-                      index < currentStepIndex ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'
+                      index < currentStepIndex ? 'bg-indigo-400' : 'bg-indigo-800'
                     )}
                   />
                 )}
@@ -74,7 +74,7 @@ export function Header() {
           {/* Reset */}
           <button
             onClick={reset}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)] hover:bg-[var(--color-muted)] rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-300 hover:text-white hover:bg-indigo-800/50 rounded-lg transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Reset
