@@ -20,9 +20,7 @@ export function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center shadow-md">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
+            <img src="/DeltaVault.png" alt="DeltaVault Logo" className="w-9 h-9 rounded-lg shadow-md object-contain" />
             <div>
               <h1 className="text-base font-bold text-white leading-none tracking-tight">
                 DeltaVault
