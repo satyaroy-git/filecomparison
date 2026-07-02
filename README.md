@@ -1,4 +1,6 @@
-# FileDiff Pro - Browser-Based File Comparison Tool
+![DeltaVault Logo](DeltaVault.png)
+
+# DeltaVault - Browser-Based File Comparison Tool
 
 A powerful browser-based tool for comparing **delimited files** (CSV, TSV, pipe-separated) and **fixed-width files** — with no server required. 100% client-side processing.
 
