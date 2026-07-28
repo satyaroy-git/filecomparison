@@ -1,1 +1,7 @@
+# Force www to non-www redirect
+https://www.getdeltavault.com/*  https://getdeltavault.com/:splat  301!
+http://www.getdeltavault.com/*   https://getdeltavault.com/:splat  301!
+http://getdeltavault.com/*       https://getdeltavault.com/:splat  301!
+
+# SPA fallback - serve index.html for all routes
 /*    /index.html   200
